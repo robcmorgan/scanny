@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:9841"
 
     class Config:
-        env_file = ".env"
+        env_file = "../.env"
 
 
 settings = Settings()

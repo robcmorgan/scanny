@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -11,6 +11,17 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
+
+ACCEPTED_MIMETYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/tiff",
+    "image/heic",
+}
+
+# Only process files created after the service started
+_service_start = datetime.now(timezone.utc)
 
 
 async def poll_drive():
@@ -28,13 +39,20 @@ async def poll_drive():
 
     async with AsyncSessionLocal() as db:
         for drive_file in files:
+            # Skip non-document file types
+            if drive_file.get("mimeType") not in ACCEPTED_MIMETYPES:
+                continue
+
+            # Skip files that existed before this service started
+            file_created_utc = datetime.fromisoformat(drive_file["createdTime"].replace("Z", "+00:00"))
+            if file_created_utc < _service_start:
+                continue
+
             existing = await db.execute(select(Document).where(Document.drive_file_id == drive_file["id"]))
             if existing.scalar_one_or_none():
                 continue
 
-            file_created = datetime.fromisoformat(
-                drive_file["createdTime"].replace("Z", "+00:00")
-            ).replace(tzinfo=None)
+            file_created = file_created_utc.replace(tzinfo=None)
 
             result = await db.execute(
                 select(PendingScan)
