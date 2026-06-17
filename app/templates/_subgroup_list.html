@@ -1,0 +1,20 @@
+<div class="space-y-2 mt-2">
+  {% for sub in subgroups %}
+  <button
+    data-subgroup-id="{{ sub.id }}"
+    data-label="{{ sub.group.name }} / {{ sub.name }}"
+    data-group-name="{{ sub.group.name }}"
+    data-subgroup-name="{{ sub.name }}"
+    data-filename-tag="{{ sub.filename_tag or '' }}"
+    data-include-group="{{ 'true' if sub.group.include_in_path else 'false' }}"
+    onclick="selectSubgroupFromEl(this)"
+    class="w-full text-left bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm hover:border-blue-400 hover:bg-blue-50 active:bg-blue-100 transition"
+  >
+    <span class="font-medium text-gray-800 block">{{ sub.name }}</span>
+    <span class="text-xs text-gray-400">{{ sub.group.name }}</span>
+  </button>
+  {% endfor %}
+  {% if not subgroups %}
+  <p class="text-gray-400 py-4 text-center text-sm">No matches</p>
+  {% endif %}
+</div>

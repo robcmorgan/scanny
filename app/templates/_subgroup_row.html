@@ -1,0 +1,25 @@
+<div class="px-4 py-2.5 flex justify-between items-center text-sm">
+  <div>
+    <span class="text-gray-800 font-medium">{{ sub.name }}</span>
+    {% if sub.filename_tag %}
+    <span class="text-gray-400 ml-2 text-xs">tag: {{ sub.filename_tag }}</span>
+    {% endif %}
+    {% if sub.custom_path %}
+    <span class="text-gray-400 ml-2 font-mono text-xs">→ {{ sub.custom_path }}</span>
+    {% endif %}
+  </div>
+  <div class="flex gap-1 shrink-0 ml-2">
+    <button
+      hx-get="/subgroups/{{ sub.id }}/edit"
+      hx-target="#subgroup-{{ sub.id }}"
+      hx-swap="innerHTML"
+      class="text-xs text-gray-400 hover:text-blue-600 px-2 py-1 rounded">Edit</button>
+    <button
+      hx-delete="/subgroups/{{ sub.id }}"
+      hx-target="#subgroup-{{ sub.id }}"
+      hx-swap="outerHTML"
+      hx-confirm="Delete '{{ sub.name }}'?"
+      hx-on::response-error="showToast('Can\'t delete — this subgroup has documents attached')"
+      class="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded">&times;</button>
+  </div>
+</div>

@@ -1,0 +1,25 @@
+# Secrets and credentials — never commit
+secrets/
+data/token.json
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# FileMaker import (large export files, not needed in history)
+filemaker-import/
+
+# Env
+.env
+
+# Logs
+*.log

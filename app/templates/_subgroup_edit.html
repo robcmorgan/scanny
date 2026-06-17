@@ -1,0 +1,25 @@
+<form
+  hx-post="/subgroups/{{ sub.id }}"
+  hx-target="#subgroup-{{ sub.id }}"
+  hx-swap="innerHTML"
+  class="px-4 py-2.5 bg-yellow-50 space-y-2">
+  <input type="text" name="name" value="{{ sub.name }}" required
+    class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+    placeholder="Subgroup name">
+  <div class="flex gap-2">
+    <input type="text" name="filename_tag" value="{{ sub.filename_tag or '' }}"
+      class="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+      placeholder="Filename tag">
+    <input type="text" name="custom_path" value="{{ sub.custom_path or '' }}"
+      class="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+      placeholder="Custom path">
+  </div>
+  <div class="flex gap-2">
+    <button type="submit" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Save</button>
+    <button type="button"
+      hx-get="/subgroups/{{ sub.id }}/edit"
+      hx-target="#subgroup-{{ sub.id }}"
+      hx-swap="innerHTML"
+      class="text-sm text-gray-400 hover:text-gray-600 px-2">Cancel</button>
+  </div>
+</form>

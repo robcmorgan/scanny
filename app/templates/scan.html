@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% set active = 'scan' %}
+{% block title %}Scan — Scanny{% endblock %}
+{% block content %}
+
+{% if not drive_authed %}
+<div class="bg-amber-50 border border-amber-300 rounded-xl p-3 mb-4 flex justify-between items-center">
+  <span class="text-amber-800 text-sm font-medium">Google Drive not connected</span>
+  <a href="/drive/auth" class="bg-amber-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Connect</a>
+</div>
+{% endif %}
+
+<!-- Waiting for scan -->
+{% if pending_scans %}
+<div class="mb-5">
+  <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Waiting for scan</p>
+  {% for scan in pending_scans %}
+  <div id="pending-{{ scan.id }}" class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-2 flex justify-between items-start">
+    <div>
+      {% if scan.subgroup %}
+      <span class="font-semibold text-blue-900">{{ scan.subgroup.group.name }} / {{ scan.subgroup.name }}</span>
+      {% endif %}
+      {% if scan.item_one_off_description %}
+      <span class="text-sm text-blue-600 ml-1 italic">{{ scan.item_one_off_description }}</span>
+      {% endif %}
+      {% if scan.comment %}<p class="text-sm text-blue-600 mt-0.5">{{ scan.comment }}</p>{% endif %}
+      <div class="flex gap-2 mt-1">
+        {% if scan.rob_task %}<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Rob TODO</span>{% endif %}
+        {% if scan.beccy_task %}<span class="text-xs bg-pink-100 text-pink-700 px-2 py-0.5 rounded-full">Beccy TODO</span>{% endif %}
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0 ml-3">
+      <span class="text-xs text-blue-400">{{ scan.created_at.strftime('%H:%M') }}</span>
+      <button
+        hx-delete="/pending/{{ scan.id }}"
+        hx-target="#pending-{{ scan.id }}"
+        hx-swap="outerHTML"
+        class="text-blue-300 hover:text-red-500 text-xl leading-none px-1">&times;</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Step 1: choose group → subgroup -->
+<div id="step-choose">
+  <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Recent</p>
+  <div class="grid grid-cols-1 gap-2 mb-5">
+    {% for group in recent_groups %}
+    <button
+      hx-get="/groups/{{ group.id }}/recent-subgroups"
+      hx-target="#subgroup-modal-content"
+      hx-on::after-request="openModal()"
+      class="w-full text-left bg-white border border-gray-200 rounded-xl px-5 py-4 text-xl font-semibold text-gray-800 shadow-sm hover:border-blue-400 hover:bg-blue-50 active:bg-blue-100 transition">
+      {{ group.name }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Or search</p>
+  <input
+    type="text"
+    placeholder="Type any subgroup name…"
+    class="w-full border border-gray-300 rounded-xl px-4 py-3 text-lg mb-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+    hx-get="/subgroups/search"
+    hx-trigger="input changed delay:250ms"
+    hx-target="#search-results"
+    name="q"
+  >
+  <div id="search-results"></div>
+</div>
+
+<!-- Step 2: confirm + create -->
+<div id="step-confirm" class="hidden">
+  <button onclick="backToChoose()" class="text-sm text-gray-400 hover:text-gray-600 mb-3">← Back</button>
+
+  <form id="scan-form" action="/pending" method="post" onsubmit="return true">
+    <input type="hidden" name="subgroup_id" id="selected-subgroup-id">
+
+    <!-- Selected category -->
+    <p class="text-xs text-gray-400 uppercase tracking-widest mb-0.5">Category</p>
+    <p class="text-xl font-bold text-gray-900 mb-3" id="selected-subgroup-label"></p>
+
+    <!-- Live filename preview -->
+    <div class="bg-slate-100 rounded-xl px-4 py-3 mb-5 flex items-center gap-3">
+      <span class="text-gray-400 text-lg">📄</span>
+      <span id="filename-preview" class="font-mono text-sm text-slate-700 break-all"></span>
+    </div>
+
+    <div class="space-y-4">
+
+      <!-- One-off description -->
+      <div>
+        <label class="text-sm font-medium text-gray-600 block mb-1">One-off description</label>
+        <input type="text" name="item_one_off_description" id="one-off-input"
+          class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+          placeholder="e.g. renewal letter">
+      </div>
+
+      <!-- Notes -->
+      <div>
+        <label class="text-sm font-medium text-gray-600 block mb-1">Notes</label>
+        <textarea name="comment" rows="3"
+          class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+          placeholder="Notes about this document"></textarea>
+      </div>
+
+      <!-- Todo -->
+      <div>
+        <div class="flex gap-3 items-center">
+          <label class="flex items-center gap-2.5 cursor-pointer">
+            <input type="checkbox" name="rob_task" value="1" id="rob-todo"
+              onchange="toggleTodoNote()"
+              class="w-5 h-5 rounded accent-orange-500">
+            <span class="font-medium text-gray-700">Rob to-do</span>
+          </label>
+          <label class="flex items-center gap-2.5 cursor-pointer ml-4">
+            <input type="checkbox" name="beccy_task" value="1" id="beccy-todo"
+              onchange="toggleTodoNote()"
+              class="w-5 h-5 rounded accent-pink-500">
+            <span class="font-medium text-gray-700">Beccy to-do</span>
+          </label>
+        </div>
+        <div id="todo-note-container" class="hidden mt-2">
+          <input type="text" name="task_note"
+            class="w-full border border-orange-200 bg-orange-50 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            placeholder="What needs doing?">
+        </div>
+      </div>
+
+      <!-- Filename override -->
+      <div>
+        <label class="text-sm font-medium text-gray-600 block mb-1">Filename override</label>
+        <input type="text" name="override_filename" id="override-filename-input"
+          oninput="updateFilenamePreview()"
+          class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+          placeholder="Leave blank to use generated name">
+      </div>
+
+      <!-- Date override (advanced) -->
+      <details class="border border-gray-100 rounded-xl">
+        <summary class="px-4 py-2.5 text-sm text-gray-400 cursor-pointer">Override date</summary>
+        <div class="px-4 pb-3 pt-1">
+          <input type="date" name="date_override" id="date-override-input"
+            oninput="updateFilenamePreview()"
+            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+        </div>
+      </details>
+
+    </div>
+
+    <button type="submit"
+      class="mt-6 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-5 rounded-2xl text-2xl font-bold shadow-lg tracking-wide transition">
+      Create
+    </button>
+  </form>
+</div>
+
+
+<!-- Subgroup bottom sheet -->
+<div id="modal-backdrop" class="hidden fixed inset-0 bg-black/40 z-40" onclick="closeModal()"></div>
+<div id="subgroup-modal" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-xl mx-auto">
+  <div class="bg-white rounded-t-2xl shadow-2xl">
+    <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-1"></div>
+    <div id="subgroup-modal-content" class="px-4 pb-8 pt-2 min-h-24">
+      <p class="text-center text-gray-400 py-6">Loading…</p>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg max-w-sm text-center"></div>
+
+
+<script>
+let _subgroupData = {};
+
+function selectSubgroupFromEl(el) {
+  _subgroupData = {
+    groupName:    el.dataset.groupName,
+    subgroupName: el.dataset.subgroupName,
+    filenameTag:  el.dataset.filenameTag,
+    includeGroup: el.dataset.includeGroup === 'true',
+  };
+  document.getElementById('selected-subgroup-id').value = el.dataset.subgroupId;
+  document.getElementById('selected-subgroup-label').textContent = el.dataset.label;
+  document.getElementById('step-choose').classList.add('hidden');
+  document.getElementById('step-confirm').classList.remove('hidden');
+  updateFilenamePreview();
+}
+
+function updateFilenamePreview() {
+  const override = document.getElementById('override-filename-input').value.trim();
+  const dateVal  = document.getElementById('date-override-input').value;
+  const preview  = document.getElementById('filename-preview');
+  if (!preview) return;
+
+  if (override) {
+    preview.textContent = override.includes('.') ? override : override + '.pdf';
+    return;
+  }
+
+  const { groupName, subgroupName, filenameTag, includeGroup } = _subgroupData;
+  if (!groupName) return;
+
+  const tag   = filenameTag || subgroupName;
+  const label = includeGroup ? `${tag} ${groupName}` : tag;
+
+  const d = dateVal ? new Date(dateVal + 'T12:00:00') : new Date();
+  const date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const time = `${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+
+  preview.textContent = `${date} ${time} ${label}.pdf`;
+}
+
+function toggleTodoNote() {
+  const either = document.getElementById('rob-todo').checked || document.getElementById('beccy-todo').checked;
+  document.getElementById('todo-note-container').classList.toggle('hidden', !either);
+}
+
+function backToChoose() {
+  document.getElementById('step-confirm').classList.add('hidden');
+  document.getElementById('step-choose').classList.remove('hidden');
+  document.getElementById('search-results').innerHTML = '';
+  document.querySelector('input[name=q]').value = '';
+}
+
+function openModal()  {
+  document.getElementById('modal-backdrop').classList.remove('hidden');
+  document.getElementById('subgroup-modal').classList.remove('hidden');
+}
+function closeModal() {
+  document.getElementById('modal-backdrop').classList.add('hidden');
+  document.getElementById('subgroup-modal').classList.add('hidden');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.add('hidden'), 3500);
+}
+
+// Submit form on Enter from any text input
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !document.getElementById('step-confirm').classList.contains('hidden')) {
+    const tag = document.activeElement.tagName;
+    if (tag === 'INPUT') {
+      e.preventDefault();
+      document.getElementById('scan-form').requestSubmit();
+    }
+  }
+});
+</script>
+
+{% endblock %}

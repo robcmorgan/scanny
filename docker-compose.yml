@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  app:
+    build: ./app
+    container_name: scanny
+    restart: unless-stopped
+    environment:
+      - PUID=2001
+      - PGID=2002
+      - TZ=Europe/London
+      - DATABASE_URL=postgresql+asyncpg://scanny:scanny@db:5432/scanny
+    env_file:
+      - .env
+    ports:
+      - "9841:8000"
+    volumes:
+      - /home/robmorgan/scanny/secrets:/secrets:ro
+      - /home/robmorgan/scanny/data:/data
+      - /home/robmorgan/scanny/filemaker-import:/filemaker-import:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - scanny_net
+
+  db:
+    image: postgres:16-alpine
+    container_name: scanny_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=scanny
+      - POSTGRES_PASSWORD=scanny
+      - POSTGRES_DB=scanny
+      - TZ=Europe/London
+    volumes:
+      - /home/robmorgan/scanny/pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scanny"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - scanny_net
+
+networks:
+  scanny_net:
+    driver: bridge

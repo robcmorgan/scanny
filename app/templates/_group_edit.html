@@ -1,0 +1,19 @@
+<form
+  hx-post="/groups/{{ group.id }}"
+  hx-target="#group-header-{{ group.id }}"
+  hx-swap="innerHTML"
+  class="px-4 py-3 bg-yellow-50 border-b border-yellow-200 flex flex-wrap gap-2 items-center">
+  <input type="text" name="name" value="{{ group.name }}" required
+    class="flex-1 min-w-32 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+  <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+    <input type="checkbox" name="include_in_path" value="1" {% if group.include_in_path %}checked{% endif %} class="accent-blue-600">
+    in filename
+  </label>
+  <button type="submit" class="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium">Save</button>
+  <button type="button"
+    hx-get="/groups/{{ group.id }}/edit"
+    hx-target="#group-header-{{ group.id }}"
+    hx-swap="innerHTML"
+    onclick="this.closest('form').outerHTML=''"
+    class="text-sm text-gray-400 hover:text-gray-600 px-2">Cancel</button>
+</form>

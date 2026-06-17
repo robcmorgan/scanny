@@ -1,0 +1,22 @@
+<div class="px-4 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+  <div>
+    <span class="font-semibold text-gray-800">{{ group.name }}</span>
+    {% if not group.include_in_path %}
+    <span class="text-xs text-gray-400 italic ml-2">name not in filename</span>
+    {% endif %}
+  </div>
+  <div class="flex gap-2">
+    <button
+      hx-get="/groups/{{ group.id }}/edit"
+      hx-target="#group-header-{{ group.id }}"
+      hx-swap="innerHTML"
+      class="text-xs text-gray-400 hover:text-blue-600 px-2 py-1 rounded">Edit</button>
+    <button
+      hx-delete="/groups/{{ group.id }}"
+      hx-target="#group-{{ group.id }}"
+      hx-swap="outerHTML"
+      hx-confirm="Delete group '{{ group.name }}'?"
+      hx-on::response-error="showToast('Remove all subgroups before deleting a group')"
+      class="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded">&times;</button>
+  </div>
+</div>
