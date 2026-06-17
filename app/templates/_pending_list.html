@@ -1,0 +1,34 @@
+<div class="flex items-center justify-between mb-3">
+  <h2 class="text-base font-bold text-gray-800">Waiting for scan</h2>
+  <button onclick="closeAllSheets()" class="text-gray-400 text-2xl leading-none w-8 h-8 flex items-center justify-center">&times;</button>
+</div>
+
+{% if pending_scans %}
+<div class="space-y-2">
+  {% for scan in pending_scans %}
+  <div id="pending-{{ scan.id }}" class="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3">
+    <div>
+      {% if scan.subgroup %}
+      <p class="text-sm font-semibold text-gray-800">
+        {{ scan.subgroup.group.name }}{% if scan.subgroup.name != '/' %} / {{ scan.subgroup.name }}{% endif %}
+      </p>
+      {% endif %}
+      {% if scan.item_one_off_description %}
+      <p class="text-xs text-gray-400 italic">{{ scan.item_one_off_description }}</p>
+      {% endif %}
+      <p class="text-xs text-gray-300 mt-0.5">{{ scan.created_at.strftime('%H:%M') }}</p>
+    </div>
+    <button
+      data-pending-id="{{ scan.id }}"
+      data-state="idle"
+      onclick="confirmDelete(this)"
+      class="ml-2 shrink-0 text-xs text-gray-300 transition-all duration-150">
+      <span class="idle-label">cancel</span>
+      <span class="confirm-label hidden bg-red-500 text-white px-2.5 py-1 rounded-full font-medium">sure?</span>
+    </button>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-center text-gray-300 text-sm py-6">Nothing waiting</p>
+{% endif %}

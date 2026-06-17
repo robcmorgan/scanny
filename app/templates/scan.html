@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import alpha_bg %}
 {% set active = 'scan' %}
 {% block title %}Scan — Scanny{% endblock %}
 {% block content %}
@@ -10,160 +11,202 @@
 </div>
 {% endif %}
 
-<!-- Waiting for scan -->
+<!-- Last added indicator -->
 {% if pending_scans %}
-<div class="mb-5">
-  <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Waiting for scan</p>
-  {% for scan in pending_scans %}
-  <div id="pending-{{ scan.id }}" class="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-2 flex justify-between items-start">
-    <div>
-      {% if scan.subgroup %}
-      <span class="font-semibold text-blue-900">{{ scan.subgroup.group.name }} / {{ scan.subgroup.name }}</span>
-      {% endif %}
-      {% if scan.item_one_off_description %}
-      <span class="text-sm text-blue-600 ml-1 italic">{{ scan.item_one_off_description }}</span>
-      {% endif %}
-      {% if scan.comment %}<p class="text-sm text-blue-600 mt-0.5">{{ scan.comment }}</p>{% endif %}
-      <div class="flex gap-2 mt-1">
-        {% if scan.rob_task %}<span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Rob TODO</span>{% endif %}
-        {% if scan.beccy_task %}<span class="text-xs bg-pink-100 text-pink-700 px-2 py-0.5 rounded-full">Beccy TODO</span>{% endif %}
-      </div>
-    </div>
-    <div class="flex items-center gap-2 shrink-0 ml-3">
-      <span class="text-xs text-blue-400">{{ scan.created_at.strftime('%H:%M') }}</span>
-      <button
-        hx-delete="/pending/{{ scan.id }}"
-        hx-target="#pending-{{ scan.id }}"
-        hx-swap="outerHTML"
-        class="text-blue-300 hover:text-red-500 text-xl leading-none px-1">&times;</button>
-    </div>
-  </div>
-  {% endfor %}
+{% set last = pending_scans[0] %}
+<div class="flex items-center justify-between mb-4 px-1">
+  <button
+    hx-get="/pending"
+    hx-target="#pending-sheet-content"
+    hx-on::after-request="openPendingSheet()"
+    class="text-xs text-gray-400 text-left truncate flex-1 min-w-0">
+    Last: <span class="font-medium text-gray-500">
+      {%- if last.override_filename -%}
+        {{ last.override_filename }}
+      {%- elif last.subgroup -%}
+        {{ last.subgroup.group.name }}{% if last.subgroup.name != '/' %} / {{ last.subgroup.name }}{% endif %}
+        {%- if last.item_one_off_description %} — {{ last.item_one_off_description }}{% endif %}
+      {%- endif -%}
+    </span>
+    <span class="text-gray-300 ml-1">{{ last.created_at.strftime('%H:%M') }}</span>
+  </button>
+  <button
+    data-pending-id="{{ last.id }}"
+    onclick="confirmDelete(this)"
+    class="ml-3 shrink-0 text-xs text-gray-300 transition-all duration-150"
+    data-state="idle">
+    <span class="idle-label">cancel</span>
+    <span class="confirm-label hidden bg-red-500 text-white px-2.5 py-1 rounded-full font-medium">sure?</span>
+  </button>
 </div>
 {% endif %}
 
-<!-- Step 1: choose group → subgroup -->
+
+<!-- ── STEP 1: pick group / subgroup ── -->
 <div id="step-choose">
-  <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Recent</p>
-  <div class="grid grid-cols-1 gap-2 mb-5">
-    {% for group in recent_groups %}
-    <button
-      hx-get="/groups/{{ group.id }}/recent-subgroups"
-      hx-target="#subgroup-modal-content"
-      hx-on::after-request="openModal()"
-      class="w-full text-left bg-white border border-gray-200 rounded-xl px-5 py-4 text-xl font-semibold text-gray-800 shadow-sm hover:border-blue-400 hover:bg-blue-50 active:bg-blue-100 transition">
-      {{ group.name }}
-    </button>
-    {% endfor %}
-  </div>
 
-  <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Or search</p>
-  <input
-    type="text"
-    placeholder="Type any subgroup name…"
-    class="w-full border border-gray-300 rounded-xl px-4 py-3 text-lg mb-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-    hx-get="/subgroups/search"
-    hx-trigger="input changed delay:250ms"
-    hx-target="#search-results"
-    name="q"
-  >
-  <div id="search-results"></div>
-</div>
+  <div class="grid grid-cols-2 gap-3">
 
-<!-- Step 2: confirm + create -->
-<div id="step-confirm" class="hidden">
-  <button onclick="backToChoose()" class="text-sm text-gray-400 hover:text-gray-600 mb-3">← Back</button>
-
-  <form id="scan-form" action="/pending" method="post" onsubmit="return true">
-    <input type="hidden" name="subgroup_id" id="selected-subgroup-id">
-
-    <!-- Selected category -->
-    <p class="text-xs text-gray-400 uppercase tracking-widest mb-0.5">Category</p>
-    <p class="text-xl font-bold text-gray-900 mb-3" id="selected-subgroup-label"></p>
-
-    <!-- Live filename preview -->
-    <div class="bg-slate-100 rounded-xl px-4 py-3 mb-5 flex items-center gap-3">
-      <span class="text-gray-400 text-lg">📄</span>
-      <span id="filename-preview" class="font-mono text-sm text-slate-700 break-all"></span>
+    <!-- Left: groups -->
+    <div>
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Group</p>
+      <div id="groups-col" class="space-y-2">
+        {% for group in quick_groups %}
+        <button
+          hx-get="/groups/{{ group.id }}/recent-subgroups"
+          hx-target="#subgroup-modal-content"
+          hx-on::after-request="openSubgroupSheet()"
+          class="w-full text-left {{ alpha_bg(group.name) }} rounded-2xl px-4 py-3.5 font-semibold shadow-sm active:scale-95 transition-transform">
+          {{ group.name }}
+        </button>
+        {% endfor %}
+      </div>
     </div>
 
-    <div class="space-y-4">
-
-      <!-- One-off description -->
-      <div>
-        <label class="text-sm font-medium text-gray-600 block mb-1">One-off description</label>
-        <input type="text" name="item_one_off_description" id="one-off-input"
-          class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-          placeholder="e.g. renewal letter">
+    <!-- Right: quick pairs -->
+    <div>
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Recent</p>
+      <div id="pairs-col" class="space-y-2">
+        {% for sub in quick_pairs %}
+        <button
+          data-subgroup-id="{{ sub.id }}"
+          data-label="{{ sub.group.name }} / {{ sub.name }}"
+          data-group-name="{{ sub.group.name }}"
+          data-subgroup-name="{{ sub.name }}"
+          data-filename-tag="{{ sub.filename_tag or '' }}"
+          data-include-group="{{ 'true' if sub.group.include_in_path else 'false' }}"
+          onclick="selectSubgroupFromEl(this)"
+          class="w-full text-left {{ alpha_bg(sub.group.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform">
+          <span class="text-xs opacity-60 block leading-tight">{{ sub.group.name }}</span>
+          <span class="text-sm font-semibold leading-snug">{{ sub.name }}</span>
+        </button>
+        {% endfor %}
+        {% if not quick_pairs %}
+        <p class="text-xs text-gray-300 px-1 pt-1">Recent picks appear here</p>
+        {% endif %}
       </div>
+    </div>
 
-      <!-- Notes -->
-      <div>
-        <label class="text-sm font-medium text-gray-600 block mb-1">Notes</label>
-        <textarea name="comment" rows="3"
-          class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-          placeholder="Notes about this document"></textarea>
-      </div>
+  </div>
 
-      <!-- Todo -->
-      <div>
-        <div class="flex gap-3 items-center">
+  <!-- Search button -->
+  <button onclick="openSearchSheet()"
+    class="mt-5 w-full bg-white rounded-2xl px-4 py-3.5 flex items-center gap-3 shadow-sm text-gray-400 active:scale-95 transition-transform">
+    <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"/>
+    </svg>
+    <span class="text-sm">Search all subgroups…</span>
+  </button>
+
+</div>
+
+
+<!-- ── STEP 2: confirm + create ── -->
+<div id="step-confirm" class="hidden">
+
+  <button onclick="backToChoose()" class="flex items-center gap-1 text-sm text-gray-400 mb-4">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+    Back
+  </button>
+
+  <form id="scan-form" action="/pending" method="post">
+    <input type="hidden" name="subgroup_id" id="selected-subgroup-id">
+
+    <p class="text-2xl font-bold text-gray-900 mb-1" id="selected-subgroup-label"></p>
+
+    <!-- Filename preview -->
+    <div class="bg-white rounded-2xl px-4 py-3 mb-5 shadow-sm">
+      <p class="text-xs text-gray-400 mb-1">Filename</p>
+      <p id="filename-preview" class="font-mono text-sm text-gray-700 break-all"></p>
+    </div>
+
+    <div class="space-y-3">
+
+      <input type="text" name="item_one_off_description" id="one-off-input"
+        class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        placeholder="One-off description (optional)">
+
+      <textarea name="comment" rows="2"
+        class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+        placeholder="Notes"></textarea>
+
+      <!-- Todo checkboxes -->
+      <div class="bg-white rounded-2xl px-4 py-3.5 shadow-sm">
+        <div class="flex gap-6">
           <label class="flex items-center gap-2.5 cursor-pointer">
-            <input type="checkbox" name="rob_task" value="1" id="rob-todo"
-              onchange="toggleTodoNote()"
+            <input type="checkbox" name="rob_task" value="1" id="rob-todo" onchange="toggleTodoNote()"
               class="w-5 h-5 rounded accent-orange-500">
-            <span class="font-medium text-gray-700">Rob to-do</span>
+            <span class="text-sm font-medium text-gray-700">Rob to-do</span>
           </label>
-          <label class="flex items-center gap-2.5 cursor-pointer ml-4">
-            <input type="checkbox" name="beccy_task" value="1" id="beccy-todo"
-              onchange="toggleTodoNote()"
+          <label class="flex items-center gap-2.5 cursor-pointer">
+            <input type="checkbox" name="beccy_task" value="1" id="beccy-todo" onchange="toggleTodoNote()"
               class="w-5 h-5 rounded accent-pink-500">
-            <span class="font-medium text-gray-700">Beccy to-do</span>
+            <span class="text-sm font-medium text-gray-700">Beccy to-do</span>
           </label>
         </div>
-        <div id="todo-note-container" class="hidden mt-2">
+        <div id="todo-note-container" class="hidden mt-3">
           <input type="text" name="task_note"
-            class="w-full border border-orange-200 bg-orange-50 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            class="w-full bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
             placeholder="What needs doing?">
         </div>
       </div>
 
-      <!-- Filename override -->
-      <div>
-        <label class="text-sm font-medium text-gray-600 block mb-1">Filename override</label>
-        <input type="text" name="override_filename" id="override-filename-input"
-          oninput="updateFilenamePreview()"
-          class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
-          placeholder="Leave blank to use generated name">
-      </div>
-
-      <!-- Date override (advanced) -->
-      <details class="border border-gray-100 rounded-xl">
-        <summary class="px-4 py-2.5 text-sm text-gray-400 cursor-pointer">Override date</summary>
-        <div class="px-4 pb-3 pt-1">
-          <input type="date" name="date_override" id="date-override-input"
-            oninput="updateFilenamePreview()"
-            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-        </div>
-      </details>
+      <input type="text" name="override_filename" id="override-filename-input"
+        oninput="updateFilenamePreview()"
+        class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm font-mono shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        placeholder="Filename override (date will be prepended)">
+      <input type="hidden" name="date_override" id="date-override-input">
 
     </div>
 
     <button type="submit"
-      class="mt-6 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-5 rounded-2xl text-2xl font-bold shadow-lg tracking-wide transition">
+      class="mt-5 w-full bg-blue-600 active:bg-blue-700 text-white py-5 rounded-2xl text-2xl font-bold shadow-lg transition-transform active:scale-95">
       Create
     </button>
   </form>
 </div>
 
 
-<!-- Subgroup bottom sheet -->
-<div id="modal-backdrop" class="hidden fixed inset-0 bg-black/40 z-40" onclick="closeModal()"></div>
-<div id="subgroup-modal" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-xl mx-auto">
-  <div class="bg-white rounded-t-2xl shadow-2xl">
-    <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-1"></div>
-    <div id="subgroup-modal-content" class="px-4 pb-8 pt-2 min-h-24">
+<!-- ── Subgroup bottom sheet (from group tap) ── -->
+<div id="sheet-backdrop" class="hidden fixed inset-0 bg-black/50 z-40" onclick="closeAllSheets()"></div>
+
+<div id="subgroup-sheet" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-xl mx-auto">
+  <div class="bg-white rounded-t-3xl shadow-2xl max-h-[80vh] flex flex-col">
+    <div class="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-2 shrink-0"></div>
+    <div id="subgroup-modal-content" class="overflow-y-auto px-4 pb-8 pt-1">
       <p class="text-center text-gray-400 py-6">Loading…</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Pending scans bottom sheet ── -->
+<div id="pending-sheet" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-xl mx-auto">
+  <div class="bg-white rounded-t-3xl shadow-2xl max-h-[80vh] flex flex-col">
+    <div class="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-3 shrink-0"></div>
+    <div id="pending-sheet-content" class="overflow-y-auto px-4 pb-8 flex-1">
+      <p class="text-center text-gray-300 text-sm py-6">Loading…</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Search bottom sheet ── -->
+<div id="search-sheet" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-xl mx-auto">
+  <div class="bg-white rounded-t-3xl shadow-2xl max-h-[90vh] flex flex-col">
+    <div class="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-3 shrink-0"></div>
+    <div class="px-4 pb-3 shrink-0">
+      <input id="search-input" type="text"
+        placeholder="e.g. k s for Kids / Scanned…"
+        class="w-full bg-gray-100 rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-400"
+        hx-get="/subgroups/search"
+        hx-trigger="input changed delay:200ms"
+        hx-target="#search-results"
+        name="q"
+        autocomplete="off">
+    </div>
+    <div id="search-results" class="overflow-y-auto px-4 pb-8 flex-1">
+      <p class="text-center text-gray-300 text-sm py-6">Start typing to search</p>
     </div>
   </div>
 </div>
@@ -184,6 +227,7 @@ function selectSubgroupFromEl(el) {
   };
   document.getElementById('selected-subgroup-id').value = el.dataset.subgroupId;
   document.getElementById('selected-subgroup-label').textContent = el.dataset.label;
+  closeAllSheets();
   document.getElementById('step-choose').classList.add('hidden');
   document.getElementById('step-confirm').classList.remove('hidden');
   updateFilenamePreview();
@@ -195,8 +239,13 @@ function updateFilenamePreview() {
   const preview  = document.getElementById('filename-preview');
   if (!preview) return;
 
+  const d = dateVal ? new Date(dateVal + 'T12:00:00') : new Date();
+  const date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const time = `${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+
   if (override) {
-    preview.textContent = override.includes('.') ? override : override + '.pdf';
+    const stem = override.includes('.') ? override.rsplit('.', 1)[0] : override;
+    preview.textContent = `${date} ${time} ${override.replace(/\.[^.]+$/, '')}.pdf`;
     return;
   }
 
@@ -205,11 +254,6 @@ function updateFilenamePreview() {
 
   const tag   = filenameTag || subgroupName;
   const label = includeGroup ? `${tag} ${groupName}` : tag;
-
-  const d = dateVal ? new Date(dateVal + 'T12:00:00') : new Date();
-  const date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const time = `${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
-
   preview.textContent = `${date} ${time} ${label}.pdf`;
 }
 
@@ -222,16 +266,53 @@ function backToChoose() {
   document.getElementById('step-confirm').classList.add('hidden');
   document.getElementById('step-choose').classList.remove('hidden');
   document.getElementById('search-results').innerHTML = '';
-  document.querySelector('input[name=q]').value = '';
+  document.getElementById('search-input').value = '';
 }
 
-function openModal()  {
-  document.getElementById('modal-backdrop').classList.remove('hidden');
-  document.getElementById('subgroup-modal').classList.remove('hidden');
+function openSubgroupSheet() {
+  document.getElementById('sheet-backdrop').classList.remove('hidden');
+  document.getElementById('subgroup-sheet').classList.remove('hidden');
 }
-function closeModal() {
-  document.getElementById('modal-backdrop').classList.add('hidden');
-  document.getElementById('subgroup-modal').classList.add('hidden');
+
+function openSearchSheet() {
+  document.getElementById('sheet-backdrop').classList.remove('hidden');
+  document.getElementById('search-sheet').classList.remove('hidden');
+  setTimeout(() => document.getElementById('search-input').focus(), 50);
+}
+
+function openPendingSheet() {
+  document.getElementById('sheet-backdrop').classList.remove('hidden');
+  document.getElementById('pending-sheet').classList.remove('hidden');
+}
+
+function closeAllSheets() {
+  document.getElementById('sheet-backdrop').classList.add('hidden');
+  document.getElementById('subgroup-sheet').classList.add('hidden');
+  document.getElementById('search-sheet').classList.add('hidden');
+  document.getElementById('pending-sheet').classList.add('hidden');
+}
+
+// Keep old names so _subgroup_popup.html still works
+function openModal()  { openSubgroupSheet(); }
+function closeModal() { closeAllSheets(); }
+
+function confirmDelete(btn) {
+  if (btn.dataset.state === 'idle') {
+    btn.dataset.state = 'confirm';
+    btn.querySelector('.idle-label').classList.add('hidden');
+    btn.querySelector('.confirm-label').classList.remove('hidden');
+    btn._timer = setTimeout(() => resetDelete(btn), 3000);
+  } else {
+    clearTimeout(btn._timer);
+    const id = btn.dataset.pendingId;
+    htmx.ajax('DELETE', '/pending/' + id, {target: btn.closest('div'), swap: 'outerHTML'});
+  }
+}
+
+function resetDelete(btn) {
+  btn.dataset.state = 'idle';
+  btn.querySelector('.idle-label').classList.remove('hidden');
+  btn.querySelector('.confirm-label').classList.add('hidden');
 }
 
 function showToast(msg) {
@@ -242,16 +323,38 @@ function showToast(msg) {
   t._timer = setTimeout(() => t.classList.add('hidden'), 3500);
 }
 
-// Submit form on Enter from any text input
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !document.getElementById('step-confirm').classList.contains('hidden')) {
-    const tag = document.activeElement.tagName;
-    if (tag === 'INPUT') {
+    if (document.activeElement.tagName === 'INPUT') {
       e.preventDefault();
       document.getElementById('scan-form').requestSubmit();
     }
   }
+  if (e.key === 'Escape') closeAllSheets();
 });
+
+// Trim columns so they fit without scrolling
+(function trimToScreen() {
+  // Available height = viewport minus bottom nav (64px) minus top padding (20px) minus search button (~60px) minus gap
+  const available = window.innerHeight - 64 - 20 - 68;
+
+  function trimCol(colId) {
+    const col = document.getElementById(colId);
+    if (!col) return;
+    const items = Array.from(col.children);
+    // Work out how much space the header label takes (sibling above col)
+    const headerHeight = 28;
+    let used = headerHeight;
+    const gap = 8;
+    items.forEach((el, i) => {
+      used += el.offsetHeight + (i > 0 ? gap : 0);
+      if (used > available) el.style.display = 'none';
+    });
+  }
+
+  trimCol('groups-col');
+  trimCol('pairs-col');
+})();
 </script>
 
 {% endblock %}

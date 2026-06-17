@@ -38,11 +38,12 @@ def build_filing_info(
     """Return (folder_path, filename) for a document."""
     tag = filename_tag or subgroup_name
 
+    date_str = scan_datetime.strftime("%Y-%m-%d")
+    time_str = scan_datetime.strftime("%H%M")
     if override_filename:
-        filename = override_filename if "." in override_filename else f"{override_filename}.{ext}"
+        stem = override_filename.rsplit(".", 1)[0] if "." in override_filename else override_filename
+        filename = f"{date_str} {time_str} {stem}.{ext}"
     else:
-        date_str = scan_datetime.strftime("%Y-%m-%d")
-        time_str = scan_datetime.strftime("%H%M")
         label = f"{tag} {group_name}" if include_group_in_path else tag
         filename = f"{date_str} {time_str} {label}.{ext}"
 

@@ -1,3 +1,4 @@
+{% from "_macros.html" import alpha_bg %}
 <div class="space-y-2 mt-2">
   {% for sub in subgroups %}
   <button
@@ -8,10 +9,10 @@
     data-filename-tag="{{ sub.filename_tag or '' }}"
     data-include-group="{{ 'true' if sub.group.include_in_path else 'false' }}"
     onclick="selectSubgroupFromEl(this)"
-    class="w-full text-left bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm hover:border-blue-400 hover:bg-blue-50 active:bg-blue-100 transition"
+    class="w-full text-left {{ alpha_bg(sub.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform"
   >
-    <span class="font-medium text-gray-800 block">{{ sub.name }}</span>
-    <span class="text-xs text-gray-400">{{ sub.group.name }}</span>
+    <span class="text-xs opacity-60 block leading-tight">{{ sub.group.name }}</span>
+    <span class="font-semibold block leading-snug">{{ sub.name }}</span>
   </button>
   {% endfor %}
   {% if not subgroups %}

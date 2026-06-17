@@ -51,35 +51,46 @@ async def drive_callback(code: str):
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import func
+    result = await db.execute(select(Group).order_by(Group.name))
+    quick_groups = result.scalars().all()
 
-    # 5 most recently used groups (ordered by max last_used of their subgroups, then alphabetical)
-    subq = (
-        select(Subgroup.group_id, func.max(Subgroup.last_used).label("max_last_used"))
-        .group_by(Subgroup.group_id)
-        .subquery()
+    # Pairs: recent + popular first, then remaining alphabetically
+    result_priority = await db.execute(
+        select(Subgroup)
+        .options(joinedload(Subgroup.group))
+        .where(Subgroup.name != "/")
+        .where((Subgroup.last_used.isnot(None)) | (Subgroup.use_count > 0))
+        .order_by(desc(Subgroup.last_used), desc(Subgroup.use_count))
     )
-    result = await db.execute(
-        select(Group)
-        .outerjoin(subq, Group.id == subq.c.group_id)
-        .order_by(desc(subq.c.max_last_used), Group.name)
-        .limit(5)
+    result_rest = await db.execute(
+        select(Subgroup)
+        .options(joinedload(Subgroup.group))
+        .where(Subgroup.name != "/")
+        .where(Subgroup.last_used.is_(None))
+        .where(Subgroup.use_count == 0)
+        .order_by(Subgroup.name)
     )
-    recent_groups = result.scalars().all()
+    seen_ids = set()
+    quick_pairs = []
+    for sub in list(result_priority.scalars()) + list(result_rest.scalars()):
+        if sub.id not in seen_ids:
+            seen_ids.add(sub.id)
+            quick_pairs.append(sub)
 
-    # Active pending scans
+    # Most recent pending scan (just for the "last added" indicator)
     result = await db.execute(
         select(PendingScan)
         .options(joinedload(PendingScan.subgroup).joinedload(Subgroup.group))
         .where(PendingScan.status == "pending")
         .order_by(desc(PendingScan.created_at))
-        .limit(5)
+        .limit(1)
     )
     pending_scans = result.scalars().all()
 
     return templates.TemplateResponse("scan.html", {
         "request": request,
-        "recent_groups": recent_groups,
+        "quick_groups": quick_groups,
+        "quick_pairs": quick_pairs,
         "pending_scans": pending_scans,
         "drive_authed": get_credentials() is not None,
     })
@@ -98,11 +109,51 @@ async def recent_subgroups(group_id: int, request: Request, db: AsyncSession = D
         .limit(5)
     )
     subgroups = result.scalars().all()
+    # Fetch the '/' placeholder subgroup so the popup can offer "just this group"
+    slash_result = await db.execute(
+        select(Subgroup)
+        .where(Subgroup.group_id == group_id)
+        .where(Subgroup.name == "/")
+        .limit(1)
+    )
+    slash_sub = slash_result.scalar_one_or_none()
     return templates.TemplateResponse("_subgroup_popup.html", {
         "request": request,
         "group": group,
         "subgroups": subgroups,
+        "slash_sub": slash_sub,
     })
+
+
+@app.get("/pending", response_class=HTMLResponse)
+async def list_pending(request: Request, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(PendingScan)
+        .options(joinedload(PendingScan.subgroup).joinedload(Subgroup.group))
+        .where(PendingScan.status == "pending")
+        .order_by(desc(PendingScan.created_at))
+        .limit(20)
+    )
+    pending_scans = result.scalars().all()
+    return templates.TemplateResponse("_pending_list.html", {
+        "request": request,
+        "pending_scans": pending_scans,
+    })
+
+
+def _token_match(sub: "Subgroup", q: str) -> bool:
+    """Match each space-separated part of q against word starts in 'Group Subgroup'.
+    Multi-char parts that don't match a word prefix are expanded as initials,
+    so 'ks' matches 'Kids Scanned' the same as 'k s' does."""
+    haystack = f"{sub.group.name} {sub.name}".lower()
+    words = haystack.split()
+    tokens = []
+    for part in q.lower().split():
+        if len(part) > 1 and part.isalpha() and not any(w.startswith(part) for w in words):
+            tokens.extend(list(part))
+        else:
+            tokens.append(part)
+    return all(any(w.startswith(t) for w in words) for t in tokens)
 
 
 @app.get("/subgroups/search", response_class=HTMLResponse)
@@ -116,13 +167,16 @@ async def search_subgroups(
     stmt = select(Subgroup).options(joinedload(Subgroup.group)).where(Subgroup.name != "/")
     if group_id:
         stmt = stmt.where(Subgroup.group_id == group_id)
-    if q:
-        stmt = stmt.where(Subgroup.name.ilike(f"%{q}%") | Subgroup.group.has(Group.name.ilike(f"%{q}%")))
     stmt = stmt.order_by(desc(Subgroup.last_used), Subgroup.name)
-    if not all:
-        stmt = stmt.limit(12)
     result = await db.execute(stmt)
-    subgroups = result.scalars().all()
+    all_subs = result.scalars().all()
+
+    if q:
+        subgroups = [s for s in all_subs if _token_match(s, q)][:12]
+    elif all:
+        subgroups = all_subs
+    else:
+        subgroups = all_subs[:12]
 
     # If called from the popup (group_id set), return popup-style list
     if group_id:

@@ -1,0 +1,32 @@
+{% macro alpha_bg(name) -%}
+{%- set c = name[0].upper() -%}
+{%- set colors = {
+  'A': 'bg-rose-100 text-rose-900',
+  'B': 'bg-red-100 text-red-900',
+  'C': 'bg-orange-100 text-orange-900',
+  'D': 'bg-amber-100 text-amber-900',
+  'E': 'bg-yellow-100 text-yellow-900',
+  'F': 'bg-lime-100 text-lime-900',
+  'G': 'bg-green-100 text-green-900',
+  'H': 'bg-emerald-100 text-emerald-900',
+  'I': 'bg-teal-100 text-teal-900',
+  'J': 'bg-cyan-100 text-cyan-900',
+  'K': 'bg-sky-100 text-sky-900',
+  'L': 'bg-blue-100 text-blue-900',
+  'M': 'bg-indigo-100 text-indigo-900',
+  'N': 'bg-violet-100 text-violet-900',
+  'O': 'bg-purple-100 text-purple-900',
+  'P': 'bg-fuchsia-100 text-fuchsia-900',
+  'Q': 'bg-pink-100 text-pink-900',
+  'R': 'bg-rose-200 text-rose-900',
+  'S': 'bg-red-200 text-red-900',
+  'T': 'bg-orange-200 text-orange-900',
+  'U': 'bg-amber-200 text-amber-900',
+  'V': 'bg-lime-200 text-lime-900',
+  'W': 'bg-green-200 text-green-900',
+  'X': 'bg-teal-200 text-teal-900',
+  'Y': 'bg-blue-200 text-blue-900',
+  'Z': 'bg-violet-200 text-violet-900'
+} -%}
+{{ colors.get(c, 'bg-gray-100 text-gray-900') }}
+{%- endmacro %}

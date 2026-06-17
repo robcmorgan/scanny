@@ -1,9 +1,24 @@
-<div class="flex items-center justify-between mb-4">
+{% from "_macros.html" import alpha_bg %}
+<div class="flex items-center justify-between mb-3">
   <h2 class="text-lg font-bold text-gray-800">{{ group.name }}</h2>
-  <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+  <button onclick="closeModal()" class="text-gray-400 text-2xl leading-none w-8 h-8 flex items-center justify-center">&times;</button>
 </div>
 
 <div class="space-y-2">
+  {% if slash_sub %}
+  <button
+    data-subgroup-id="{{ slash_sub.id }}"
+    data-label="{{ group.name }}"
+    data-group-name="{{ group.name }}"
+    data-subgroup-name=""
+    data-filename-tag="{{ slash_sub.filename_tag or '' }}"
+    data-include-group="{{ 'true' if group.include_in_path else 'false' }}"
+    onclick="selectSubgroupFromEl(this); closeModal()"
+    class="w-full text-left {{ alpha_bg(group.name) }} rounded-2xl px-4 py-3 text-sm italic opacity-70 active:scale-95 transition-transform">
+    Just {{ group.name }} (no subgroup)
+  </button>
+  {% endif %}
+
   {% for sub in subgroups %}
   <button
     data-subgroup-id="{{ sub.id }}"
@@ -13,10 +28,11 @@
     data-filename-tag="{{ sub.filename_tag or '' }}"
     data-include-group="{{ 'true' if group.include_in_path else 'false' }}"
     onclick="selectSubgroupFromEl(this); closeModal()"
-    class="w-full text-left bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5 text-gray-800 font-medium hover:bg-blue-50 hover:border-blue-300 active:bg-blue-100 transition text-lg">
+    class="w-full text-left {{ alpha_bg(sub.name) }} rounded-2xl px-4 py-3.5 font-semibold shadow-sm active:scale-95 transition-transform">
     {{ sub.name }}
   </button>
   {% endfor %}
+
   {% if not subgroups %}
   <p class="text-gray-400 text-sm text-center py-4">No subgroups yet</p>
   {% endif %}
@@ -26,6 +42,6 @@
   hx-get="/subgroups/search?group_id={{ group.id }}&all=1"
   hx-target="#subgroup-modal-content"
   hx-swap="innerHTML"
-  class="mt-4 w-full text-center text-sm text-blue-600 py-2 hover:underline">
+  class="mt-4 w-full text-center text-sm text-blue-500 py-2">
   All subgroups in {{ group.name }} →
 </button>
