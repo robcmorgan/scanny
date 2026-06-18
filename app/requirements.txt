@@ -9,3 +9,4 @@ google-auth-oauthlib==1.2.1
 google-api-python-client==2.154.0
 apscheduler==3.10.4
 pydantic-settings==2.6.1
+httpx==0.28.1

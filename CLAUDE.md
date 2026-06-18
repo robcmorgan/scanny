@@ -27,9 +27,13 @@ secrets/           — put client_secret.json here (git-ignored)
 
 ## Filing convention
 
-`/{Group}/{Subgroup}/{YYYY-MM-DD} {HHMM} {Subgroup} {Group}.ext`
+Default: `/{Group}/{Subgroup}/{YYYY-MM-DD} {String from tag} scanned papers-{HHMMSS}.ext`
 
-e.g. `/Health/Rob/2026-12-01 1149 Rob Health.pdf`
+e.g. `/Health/Alice Dentist/2016-12-04 Alice Dentist scanned papers-152513.pdf`
+
+With override filename: `/{Group}/{Subgroup}/{override stem}.ext`
+
+`String from tag` is stored as `Subgroup.filename_tag`. Fallback when NULL: group name (for "/" subgroup) or subgroup name.
 
 ## Running locally (outside Docker)
 

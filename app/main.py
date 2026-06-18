@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import datetime
 
 from fastapi import FastAPI, Request, Depends, HTTPException, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -11,7 +11,7 @@ from sqlalchemy.orm import joinedload
 
 from database import get_db, init_db
 from models import Group, Subgroup, PendingScan, Document
-from services.drive import get_flow, save_credentials_from_flow, get_credentials
+from services.drive import get_flow, save_credentials_from_flow, get_credentials, get_drive_service
 from services.watcher import start_scheduler, stop_scheduler
 
 
@@ -272,6 +272,12 @@ async def create_pending(
         override_filename=override_filename or None,
     )
     db.add(pending)
+
+    sub = await db.get(Subgroup, subgroup_id)
+    if sub:
+        sub.use_count = (sub.use_count or 0) + 1
+        sub.last_used = datetime.utcnow()
+
     await db.commit()
     return RedirectResponse("/", status_code=303)
 
@@ -373,9 +379,156 @@ async def update_subgroup(
 
 @app.get("/library", response_class=HTMLResponse)
 async def library(request: Request, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func
+    result = await db.execute(
+        select(Group, func.count(Document.id).label("doc_count"))
+        .outerjoin(Subgroup, Subgroup.group_id == Group.id)
+        .outerjoin(Document, Document.subgroup_id == Subgroup.id)
+        .group_by(Group.id)
+        .order_by(Group.name)
+    )
+    groups = result.all()
     return templates.TemplateResponse("library.html", {
         "request": request,
         "active": "library",
+        "groups": groups,
+    })
+
+
+@app.get("/library/{group_id}", response_class=HTMLResponse)
+async def library_group(group_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func
+    group = await db.get(Group, group_id)
+    if not group:
+        raise HTTPException(404)
+    result = await db.execute(
+        select(Subgroup, func.count(Document.id).label("doc_count"))
+        .outerjoin(Document, Document.subgroup_id == Subgroup.id)
+        .where(Subgroup.group_id == group_id)
+        .where(Subgroup.name != "/")
+        .group_by(Subgroup.id)
+        .order_by(Subgroup.name)
+    )
+    subgroups = result.all()
+    # Fetch the '/' subgroup (docs filed directly under the group) if it has documents
+    slash_result = await db.execute(
+        select(Subgroup, func.count(Document.id).label("doc_count"))
+        .outerjoin(Document, Document.subgroup_id == Subgroup.id)
+        .where(Subgroup.group_id == group_id)
+        .where(Subgroup.name == "/")
+        .group_by(Subgroup.id)
+    )
+    slash_row = slash_result.first()
+    slash_sub = slash_row if slash_row and slash_row[1] > 0 else None
+    return templates.TemplateResponse("library_group.html", {
+        "request": request,
+        "active": "library",
+        "group": group,
+        "subgroups": subgroups,
+        "slash_sub": slash_sub,
+    })
+
+
+@app.get("/library/{group_id}/{subgroup_id}", response_class=HTMLResponse)
+async def library_subgroup(group_id: int, subgroup_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    group = await db.get(Group, group_id)
+    subgroup = await db.get(Subgroup, subgroup_id)
+    if not group or not subgroup:
+        raise HTTPException(404)
+    result = await db.execute(
+        select(Document)
+        .where(Document.subgroup_id == subgroup_id)
+        .order_by(desc(Document.timestamp_from_filename))
+    )
+    documents = result.scalars().all()
+    return templates.TemplateResponse("library_subgroup.html", {
+        "request": request,
+        "active": "library",
+        "group": group,
+        "subgroup": subgroup,
+        "documents": documents,
+    })
+
+
+@app.get("/thumbnail/{document_id}")
+async def thumbnail(document_id: int, db: AsyncSession = Depends(get_db)):
+    import httpx, traceback
+    doc = await db.get(Document, document_id)
+    if not doc or not doc.drive_file_id:
+        raise HTTPException(404)
+    try:
+        service = get_drive_service()
+        meta = service.files().get(
+            fileId=doc.drive_file_id,
+            fields="thumbnailLink"
+        ).execute()
+        thumb_url = meta.get("thumbnailLink")
+        if not thumb_url:
+            raise HTTPException(404)
+        thumb_url = thumb_url.replace("=s220", "=s400")
+        creds = get_credentials()
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                thumb_url,
+                headers={"Authorization": f"Bearer {creds.token}"},
+                follow_redirects=True,
+            )
+        return StreamingResponse(
+            iter([resp.content]),
+            media_type=resp.headers.get("content-type", "image/jpeg"),
+            headers={"Cache-Control": "no-store"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Thumbnail error doc={document_id}: {e}\n{traceback.format_exc()}")
+        raise HTTPException(502, str(e))
+
+
+@app.get("/document/{document_id}/file")
+async def document_file(document_id: int, db: AsyncSession = Depends(get_db)):
+    """Proxy the PDF from Drive for in-browser viewing."""
+    import httpx, traceback
+    doc = await db.get(Document, document_id)
+    if not doc or not doc.drive_file_id:
+        raise HTTPException(404)
+    try:
+        creds = get_credentials()
+        url = f"https://www.googleapis.com/drive/v3/files/{doc.drive_file_id}?alt=media"
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                url,
+                headers={"Authorization": f"Bearer {creds.token}"},
+                follow_redirects=True,
+            )
+        if resp.status_code == 404:
+            raise HTTPException(404)
+        content_type = resp.headers.get("content-type", "application/pdf")
+        return StreamingResponse(
+            iter([resp.content]),
+            media_type=content_type,
+            headers={"Cache-Control": "no-store", "Content-Disposition": "inline"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Document file error doc={document_id}: {e}\n{traceback.format_exc()}")
+        raise HTTPException(502, str(e))
+
+
+@app.get("/document/{document_id}", response_class=HTMLResponse)
+async def document_viewer(document_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Document)
+        .options(joinedload(Document.group), joinedload(Document.subgroup))
+        .where(Document.id == document_id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(404)
+    return templates.TemplateResponse("document_viewer.html", {
+        "request": request,
+        "doc": doc,
     })
 
 

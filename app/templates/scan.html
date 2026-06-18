@@ -14,31 +14,26 @@
 <!-- Last added indicator -->
 {% if pending_scans %}
 {% set last = pending_scans[0] %}
-<div class="flex items-center justify-between mb-4 px-1">
-  <button
-    hx-get="/pending"
-    hx-target="#pending-sheet-content"
-    hx-on::after-request="openPendingSheet()"
-    class="text-xs text-gray-400 text-left truncate flex-1 min-w-0">
-    Last: <span class="font-medium text-gray-500">
-      {%- if last.override_filename -%}
-        {{ last.override_filename }}
-      {%- elif last.subgroup -%}
-        {{ last.subgroup.group.name }}{% if last.subgroup.name != '/' %} / {{ last.subgroup.name }}{% endif %}
-        {%- if last.item_one_off_description %} — {{ last.item_one_off_description }}{% endif %}
-      {%- endif -%}
-    </span>
-    <span class="text-gray-300 ml-1">{{ last.created_at.strftime('%H:%M') }}</span>
-  </button>
-  <button
-    data-pending-id="{{ last.id }}"
-    onclick="confirmDelete(this)"
-    class="ml-3 shrink-0 text-xs text-gray-300 transition-all duration-150"
-    data-state="idle">
-    <span class="idle-label">cancel</span>
-    <span class="confirm-label hidden bg-red-500 text-white px-2.5 py-1 rounded-full font-medium">sure?</span>
-  </button>
-</div>
+<button
+  hx-get="/pending"
+  hx-target="#pending-sheet-content"
+  hx-on::after-request="openPendingSheet()"
+  class="flex items-center gap-2 mb-4 px-1 w-full text-left min-w-0">
+  <span class="text-xs text-gray-500 truncate flex-1 min-w-0">
+    {%- if last.subgroup -%}
+    <span class="font-medium">{{ last.subgroup.group.name }}{% if last.subgroup.name != '/' %} / {{ last.subgroup.name }}{% endif %}</span>
+    {%- endif -%}
+    {%- if last.item_one_off_description %}<span class="text-gray-400"> — {{ last.item_one_off_description }}</span>
+    {%- elif last.override_filename %}<span class="text-gray-400"> — {{ last.override_filename }}</span>
+    {%- endif -%}
+  </span>
+  {% if last.rob_task or last.beccy_task %}
+  <svg class="w-3.5 h-3.5 shrink-0 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+  </svg>
+  {% endif %}
+  <span class="text-xs text-gray-300 shrink-0">{{ last.created_at.strftime('%H:%M') }}</span>
+</button>
 {% endif %}
 
 
@@ -49,7 +44,7 @@
 
     <!-- Left: groups -->
     <div>
-      <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Group</p>
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Groups</p>
       <div id="groups-col" class="space-y-2">
         {% for group in quick_groups %}
         <button
@@ -65,7 +60,7 @@
 
     <!-- Right: quick pairs -->
     <div>
-      <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Recent</p>
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Last used</p>
       <div id="pairs-col" class="space-y-2">
         {% for sub in quick_pairs %}
         <button
@@ -114,7 +109,13 @@
   <form id="scan-form" action="/pending" method="post">
     <input type="hidden" name="subgroup_id" id="selected-subgroup-id">
 
-    <p class="text-2xl font-bold text-gray-900 mb-1" id="selected-subgroup-label"></p>
+    <div class="flex items-center gap-2 mb-4">
+    <button type="button" onclick="backToChoose()"
+      class="rounded-2xl px-4 py-3 text-left flex-1 active:opacity-70 transition-opacity shadow-sm"
+      id="selected-subgroup-label"></button>
+    <button type="submit" form="scan-form"
+      class="w-12 h-12 bg-blue-600 active:bg-blue-700 text-white text-2xl font-bold rounded-2xl flex items-center justify-center shadow-sm shrink-0">+</button>
+  </div>
 
     <!-- Filename preview -->
     <div class="bg-white rounded-2xl px-4 py-3 mb-5 shadow-sm">
@@ -125,6 +126,7 @@
     <div class="space-y-3">
 
       <input type="text" name="item_one_off_description" id="one-off-input"
+        oninput="syncOneOffToOverride()"
         class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
         placeholder="One-off description (optional)">
 
@@ -154,9 +156,9 @@
       </div>
 
       <input type="text" name="override_filename" id="override-filename-input"
-        oninput="updateFilenamePreview()"
+        oninput="_overrideManual = this.value.length > 0; updateFilenamePreview()"
         class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm font-mono shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-        placeholder="Filename override (date will be prepended)">
+        placeholder="Filename override (optional)">
       <input type="hidden" name="date_override" id="date-override-input">
 
     </div>
@@ -169,13 +171,13 @@
 </div>
 
 
-<!-- ── Subgroup bottom sheet (from group tap) ── -->
+<!-- ── Shared backdrop ── -->
 <div id="sheet-backdrop" class="hidden fixed inset-0 bg-black/50 z-40" onclick="closeAllSheets()"></div>
 
-<div id="subgroup-sheet" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-xl mx-auto">
-  <div class="bg-white rounded-t-3xl shadow-2xl max-h-[80vh] flex flex-col">
-    <div class="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-2 shrink-0"></div>
-    <div id="subgroup-modal-content" class="overflow-y-auto px-4 pb-8 pt-1">
+<!-- ── Subgroup floating dialog ── -->
+<div id="subgroup-sheet" class="hidden fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+  <div class="bg-white rounded-3xl shadow-2xl w-[calc(100%-2rem)] max-w-sm max-h-[72vh] flex flex-col pointer-events-auto">
+    <div id="subgroup-modal-content" class="overflow-y-auto px-4 pb-6 pt-5">
       <p class="text-center text-gray-400 py-6">Loading…</p>
     </div>
   </div>
@@ -217,19 +219,61 @@
 
 <script>
 let _subgroupData = {};
+let _overrideManual = false;
+
+const _alphaColors = {
+  A:'bg-rose-100 text-rose-900',B:'bg-red-100 text-red-900',
+  C:'bg-orange-100 text-orange-900',D:'bg-amber-100 text-amber-900',
+  E:'bg-yellow-100 text-yellow-900',F:'bg-lime-100 text-lime-900',
+  G:'bg-green-100 text-green-900',H:'bg-emerald-100 text-emerald-900',
+  I:'bg-teal-100 text-teal-900',J:'bg-cyan-100 text-cyan-900',
+  K:'bg-sky-100 text-sky-900',L:'bg-blue-100 text-blue-900',
+  M:'bg-indigo-100 text-indigo-900',N:'bg-violet-100 text-violet-900',
+  O:'bg-purple-100 text-purple-900',P:'bg-fuchsia-100 text-fuchsia-900',
+  Q:'bg-pink-100 text-pink-900',R:'bg-rose-200 text-rose-900',
+  S:'bg-red-200 text-red-900',T:'bg-orange-200 text-orange-900',
+  U:'bg-amber-200 text-amber-900',V:'bg-lime-200 text-lime-900',
+  W:'bg-green-200 text-green-900',X:'bg-teal-200 text-teal-900',
+  Y:'bg-blue-200 text-blue-900',Z:'bg-violet-200 text-violet-900',
+};
+function alphaClass(name) {
+  return _alphaColors[(name||'')[0]?.toUpperCase()] || 'bg-gray-100 text-gray-900';
+}
 
 function selectSubgroupFromEl(el) {
+  const gn = el.dataset.groupName;
+  const sn = el.dataset.subgroupName;
   _subgroupData = {
-    groupName:    el.dataset.groupName,
-    subgroupName: el.dataset.subgroupName,
-    filenameTag:  el.dataset.filenameTag,
+    groupName: gn, subgroupName: sn,
+    filenameTag: el.dataset.filenameTag,
     includeGroup: el.dataset.includeGroup === 'true',
   };
   document.getElementById('selected-subgroup-id').value = el.dataset.subgroupId;
-  document.getElementById('selected-subgroup-label').textContent = el.dataset.label;
+
+  // Colour the label button to match the source button
+  const labelBtn = document.getElementById('selected-subgroup-label');
+  if (sn && sn !== '/') {
+    labelBtn.innerHTML = `<span class="text-xs opacity-60 block leading-tight">${gn}</span><span class="font-semibold">${sn}</span>`;
+  } else {
+    labelBtn.innerHTML = `<span class="font-semibold">${gn}</span>`;
+  }
+  labelBtn.className = `rounded-2xl px-4 py-3 text-left flex-1 active:opacity-70 transition-opacity shadow-sm ${alphaClass(gn)}`;
+
   closeAllSheets();
   document.getElementById('step-choose').classList.add('hidden');
   document.getElementById('step-confirm').classList.remove('hidden');
+  _overrideManual = false;
+  document.getElementById('override-filename-input').value = '';
+  document.getElementById('one-off-input').value = '';
+  updateFilenamePreview();
+  setTimeout(() => document.getElementById('one-off-input').focus(), 50);
+}
+
+function syncOneOffToOverride() {
+  if (!_overrideManual) {
+    document.getElementById('override-filename-input').value =
+      document.getElementById('one-off-input').value;
+  }
   updateFilenamePreview();
 }
 
@@ -241,20 +285,18 @@ function updateFilenamePreview() {
 
   const d = dateVal ? new Date(dateVal + 'T12:00:00') : new Date();
   const date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const time = `${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+  const time = `${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}${String(d.getSeconds()).padStart(2,'0')}`;
 
   if (override) {
-    const stem = override.includes('.') ? override.rsplit('.', 1)[0] : override;
-    preview.textContent = `${date} ${time} ${override.replace(/\.[^.]+$/, '')}.pdf`;
+    preview.textContent = `${override.replace(/\.[^.]+$/, '')}.pdf`;
     return;
   }
 
-  const { groupName, subgroupName, filenameTag, includeGroup } = _subgroupData;
+  const { groupName, subgroupName, filenameTag } = _subgroupData;
   if (!groupName) return;
 
-  const tag   = filenameTag || subgroupName;
-  const label = includeGroup ? `${tag} ${groupName}` : tag;
-  preview.textContent = `${date} ${time} ${label}.pdf`;
+  const label = filenameTag || (subgroupName === '/' ? groupName : subgroupName);
+  preview.textContent = `${date} ${label} scanned papers-${time}.pdf`;
 }
 
 function toggleTodoNote() {
@@ -272,7 +314,12 @@ function backToChoose() {
 function openSubgroupSheet() {
   document.getElementById('sheet-backdrop').classList.remove('hidden');
   document.getElementById('subgroup-sheet').classList.remove('hidden');
+  setTimeout(() => {
+    const first = document.querySelector('#subgroup-modal-content button[data-subgroup-id]');
+    if (first) first.focus();
+  }, 150);
 }
+
 
 function openSearchSheet() {
   document.getElementById('sheet-backdrop').classList.remove('hidden');
@@ -324,13 +371,92 @@ function showToast(msg) {
 }
 
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && !document.getElementById('step-confirm').classList.contains('hidden')) {
-    if (document.activeElement.tagName === 'INPUT') {
+  const confirmVisible       = !document.getElementById('step-confirm').classList.contains('hidden');
+  const chooseVisible        = !document.getElementById('step-choose').classList.contains('hidden');
+  const searchVisible        = !document.getElementById('search-sheet').classList.contains('hidden');
+  const subgroupSheetVisible = !document.getElementById('subgroup-sheet').classList.contains('hidden');
+  const tag = document.activeElement.tagName;
+
+  // Escape closes sheets / goes back
+  if (e.key === 'Escape') { closeAllSheets(); return; }
+
+  // Subgroup popup: arrow nav + Enter on focused button
+  if (subgroupSheetVisible) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const btns = Array.from(document.querySelectorAll('#subgroup-modal-content button[data-subgroup-id]'));
+      const idx = btns.indexOf(document.activeElement);
+      if (idx === -1 && e.key === 'ArrowDown') {
+        if (btns[0]) btns[0].focus();
+      } else if (idx !== -1) {
+        if (e.key === 'ArrowDown' && btns[idx + 1]) btns[idx + 1].focus();
+        else if (e.key === 'ArrowUp' && btns[idx - 1]) btns[idx - 1].focus();
+      }
       e.preventDefault();
-      document.getElementById('scan-form').requestSubmit();
+    }
+    return;
+  }
+
+  // Step 2: Enter submits (unless in textarea)
+  if (confirmVisible && e.key === 'Enter' && tag !== 'TEXTAREA') {
+    e.preventDefault();
+    document.getElementById('scan-form').requestSubmit();
+    return;
+  }
+
+  // Step 1 choose: any printable char opens search
+  if (chooseVisible && !searchVisible && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && tag !== 'INPUT') {
+    openSearchSheet();
+    const inp = document.getElementById('search-input');
+    inp.value = e.key;
+    htmx.trigger(inp, 'input');
+    e.preventDefault();
+    return;
+  }
+
+  // Arrow nav within groups / pairs columns
+  if (chooseVisible && !searchVisible && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    const colIds = ['groups-col', 'pairs-col'];
+    for (let ci = 0; ci < colIds.length; ci++) {
+      const col = document.getElementById(colIds[ci]);
+      if (!col) continue;
+      const btns = Array.from(col.querySelectorAll('button')).filter(b => b.style.display !== 'none');
+      const idx = btns.indexOf(document.activeElement);
+      if (idx === -1) continue;
+      if (e.key === 'ArrowDown' && btns[idx + 1]) { btns[idx + 1].focus(); e.preventDefault(); }
+      else if (e.key === 'ArrowUp' && btns[idx - 1]) { btns[idx - 1].focus(); e.preventDefault(); }
+      else if (e.key === 'ArrowRight' && ci === 0) {
+        const right = document.querySelectorAll('#pairs-col button');
+        if (right[0]) { right[0].focus(); e.preventDefault(); }
+      } else if (e.key === 'ArrowLeft' && ci === 1) {
+        const left = document.querySelectorAll('#groups-col button');
+        if (left[0]) { left[0].focus(); e.preventDefault(); }
+      }
+      return;
+    }
+    // Nothing focused yet: focus first group
+    if (e.key === 'ArrowDown') {
+      const first = document.querySelector('#groups-col button');
+      if (first) { first.focus(); e.preventDefault(); }
     }
   }
-  if (e.key === 'Escape') closeAllSheets();
+
+  // Search sheet: ArrowDown from input → first result; ArrowUp from first result → input
+  if (searchVisible) {
+    const inp = document.getElementById('search-input');
+    const results = document.getElementById('search-results');
+    if (e.key === 'ArrowDown' && document.activeElement === inp) {
+      const first = results.querySelector('button');
+      if (first) { first.focus(); e.preventDefault(); }
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const btns = Array.from(results.querySelectorAll('button'));
+      const idx = btns.indexOf(document.activeElement);
+      if (idx !== -1) {
+        if (e.key === 'ArrowDown' && btns[idx + 1]) { btns[idx + 1].focus(); e.preventDefault(); }
+        else if (e.key === 'ArrowUp' && idx === 0) { inp.focus(); e.preventDefault(); }
+        else if (e.key === 'ArrowUp' && btns[idx - 1]) { btns[idx - 1].focus(); e.preventDefault(); }
+      }
+    }
+  }
 });
 
 // Trim columns so they fit without scrolling

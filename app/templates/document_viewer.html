@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% set active = 'library' %}
+{% block title %}{{ doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported }}{% endblock %}
+{% block content %}
+
+<div class="flex items-center gap-2 mb-3">
+  {% if doc.group and doc.subgroup %}
+  <a href="/library/{{ doc.group_id }}/{{ doc.subgroup_id }}"
+     class="flex items-center gap-1 text-sm text-gray-400 shrink-0">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+    {{ doc.subgroup.name }}
+  </a>
+  {% elif doc.group %}
+  <a href="/library/{{ doc.group_id }}"
+     class="flex items-center gap-1 text-sm text-gray-400 shrink-0">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+    {{ doc.group.name }}
+  </a>
+  {% else %}
+  <a href="/library" class="flex items-center gap-1 text-sm text-gray-400 shrink-0">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+    Library
+  </a>
+  {% endif %}
+</div>
+
+<p class="text-base font-semibold text-gray-900 mb-1 truncate">
+  {{ doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported }}
+</p>
+{% if doc.timestamp_from_filename %}
+<p class="text-xs text-gray-400 mb-3">{{ doc.timestamp_from_filename.strftime('%d %B %Y') }}</p>
+{% endif %}
+
+{% if doc.drive_file_id %}
+<div class="w-full rounded-2xl overflow-hidden bg-gray-100 shadow-sm" style="height: calc(100vh - 160px)">
+  <embed
+    src="/document/{{ doc.id }}/file"
+    type="application/pdf"
+    class="w-full h-full"
+    id="pdf-embed">
+</div>
+<p class="text-xs text-gray-400 text-center mt-2">
+  If the PDF doesn't display,
+  <a href="/document/{{ doc.id }}/file" target="_blank" class="text-blue-500 underline">open it directly</a>.
+</p>
+{% else %}
+<div class="text-center py-12 text-gray-400">
+  <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+  </svg>
+  <p class="text-sm">No file linked to this document yet.</p>
+</div>
+{% endif %}
+
+{% endblock %}

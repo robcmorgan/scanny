@@ -42,6 +42,7 @@
   hx-get="/subgroups/search?group_id={{ group.id }}&all=1"
   hx-target="#subgroup-modal-content"
   hx-swap="innerHTML"
+  hx-on::after-settle="setTimeout(()=>document.querySelector('#subgroup-modal-content button[data-subgroup-id]')?.focus(),50)"
   class="mt-4 w-full text-center text-sm text-blue-500 py-2">
   All subgroups in {{ group.name }} →
 </button>

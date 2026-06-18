@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_macros.html" import alpha_bg %}
+{% set active = 'library' %}
+{% block title %}{{ subgroup.name }} — {{ group.name }}{% endblock %}
+{% block content %}
+
+<a href="/library/{{ group.id }}" class="flex items-center gap-1 text-sm text-gray-400 mb-1">
+  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+  </svg>
+  {{ group.name }}
+</a>
+<p class="text-2xl font-bold text-gray-900 mb-4">{{ subgroup.name }}</p>
+
+{% if documents %}
+<div class="grid grid-cols-2 gap-3">
+  {% for doc in documents %}
+  <a href="/document/{{ doc.id }}" class="{{ alpha_bg(subgroup.name) }} rounded-2xl overflow-hidden shadow-sm block active:opacity-70 transition-opacity">
+    {% if doc.drive_file_id %}
+    <div class="aspect-[3/4] bg-gray-100 overflow-hidden relative">
+      <div class="absolute inset-0 flex items-center justify-center thumb-spinner">
+        <div class="w-6 h-6 rounded-full border-2 border-gray-300 border-t-gray-500 animate-spin"></div>
+      </div>
+      <img
+        src="/thumbnail/{{ doc.id }}?v={{ doc.drive_file_id[-4:] }}"
+        loading="lazy"
+        class="w-full h-full object-cover relative"
+        onload="this.parentElement.querySelector('.thumb-spinner').remove()"
+        onerror="this.parentElement.innerHTML='<div class=\'w-full h-full flex items-center justify-center opacity-20\'><svg class=\'w-10 h-10\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'currentColor\'><path stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1\' d=\'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z\'/></svg></div>'">
+    </div>
+    {% else %}
+    <div class="aspect-[3/4] flex items-center justify-center opacity-20">
+      <svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+    </div>
+    {% endif %}
+    <div class="px-3 py-2.5">
+      <p class="text-xs font-semibold truncate">
+        {{ doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported }}
+      </p>
+      {% if doc.timestamp_from_filename %}
+      <p class="text-xs opacity-50 mt-0.5">{{ doc.timestamp_from_filename.strftime('%d %b %Y') }}</p>
+      {% endif %}
+      {% if doc.assigned_rob_task or doc.assigned_beccy_task %}
+      <div class="flex gap-1 mt-1">
+        {% if doc.assigned_rob_task %}<span class="text-xs bg-white/40 px-1.5 py-0.5 rounded-full">Rob</span>{% endif %}
+        {% if doc.assigned_beccy_task %}<span class="text-xs bg-white/40 px-1.5 py-0.5 rounded-full">Beccy</span>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-gray-400 text-sm text-center py-8">No documents yet</p>
+{% endif %}
+
+{% endblock %}

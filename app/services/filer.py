@@ -36,16 +36,20 @@ def build_filing_info(
     ext: str,
 ) -> tuple[str, str]:
     """Return (folder_path, filename) for a document."""
-    tag = filename_tag or subgroup_name
+    if filename_tag:
+        label = filename_tag
+    elif subgroup_name == "/":
+        label = group_name
+    else:
+        label = subgroup_name
 
     date_str = scan_datetime.strftime("%Y-%m-%d")
-    time_str = scan_datetime.strftime("%H%M")
+    time_str = scan_datetime.strftime("%H%M%S")
     if override_filename:
         stem = override_filename.rsplit(".", 1)[0] if "." in override_filename else override_filename
-        filename = f"{date_str} {time_str} {stem}.{ext}"
+        filename = f"{stem}.{ext}"
     else:
-        label = f"{tag} {group_name}" if include_group_in_path else tag
-        filename = f"{date_str} {time_str} {label}.{ext}"
+        filename = f"{date_str} {label} scanned papers-{time_str}.{ext}"
 
     if custom_path:
         folder = custom_path.rstrip("/")
