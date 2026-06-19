@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "_macros.html" import alpha_bg %}
 {% set active = 'library' %}
 {% block title %}{{ group.name }} — Library{% endblock %}
 {% block content %}
@@ -17,14 +16,14 @@
   {% if slash_sub %}
   {% set sub, count = slash_sub %}
   <a href="/library/{{ group.id }}/{{ sub.id }}"
-    class="flex items-center justify-between {{ alpha_bg(group.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform">
+    class="flex items-center justify-between {{ chip_color(group.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform">
     <span class="font-semibold italic opacity-70">Just {{ group.name }}</span>
     <span class="text-xs opacity-50">{{ count }}</span>
   </a>
   {% endif %}
   {% for subgroup, doc_count in subgroups %}
   <a href="/library/{{ group.id }}/{{ subgroup.id }}"
-    class="flex items-center justify-between {{ alpha_bg(subgroup.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform">
+    class="flex items-center justify-between {{ chip_color(group.name + '/' + subgroup.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform">
     <span class="font-semibold">{{ subgroup.name }}</span>
     <span class="text-xs opacity-50">{{ doc_count }}</span>
   </a>

@@ -1,10 +1,4 @@
-{% from "_macros.html" import alpha_bg %}
-<div class="flex items-center justify-between mb-3">
-  <h2 class="text-lg font-bold text-gray-800">{{ group.name }}</h2>
-  <button onclick="closeModal()" class="text-gray-400 text-2xl leading-none w-8 h-8 flex items-center justify-center">&times;</button>
-</div>
-
-<div class="space-y-2">
+<div class="flex items-center gap-2 mb-3">
   {% if slash_sub %}
   <button
     data-subgroup-id="{{ slash_sub.id }}"
@@ -14,11 +8,16 @@
     data-filename-tag="{{ slash_sub.filename_tag or '' }}"
     data-include-group="{{ 'true' if group.include_in_path else 'false' }}"
     onclick="selectSubgroupFromEl(this); closeModal()"
-    class="w-full text-left {{ alpha_bg(group.name) }} rounded-2xl px-4 py-3 text-sm italic opacity-70 active:scale-95 transition-transform">
-    Just {{ group.name }} (no subgroup)
+    class="flex-1 text-left {{ chip_color(group.name) }} rounded-2xl px-4 py-2 font-medium ring-1 ring-inset ring-black/10 active:scale-95 transition-transform">
+    {{ group.name }}
   </button>
+  {% else %}
+  <h2 class="flex-1 text-lg font-bold text-gray-800">{{ group.name }}</h2>
   {% endif %}
+  <button onclick="closeModal()" class="text-gray-400 text-2xl leading-none w-8 h-8 flex items-center justify-center shrink-0">&times;</button>
+</div>
 
+<div class="space-y-2">
   {% for sub in subgroups %}
   <button
     data-subgroup-id="{{ sub.id }}"
@@ -28,7 +27,7 @@
     data-filename-tag="{{ sub.filename_tag or '' }}"
     data-include-group="{{ 'true' if group.include_in_path else 'false' }}"
     onclick="selectSubgroupFromEl(this); closeModal()"
-    class="w-full text-left {{ alpha_bg(sub.name) }} rounded-2xl px-4 py-3.5 font-semibold shadow-sm active:scale-95 transition-transform">
+    class="w-full text-left {{ chip_color(group.name + '/' + sub.name) }} rounded-2xl px-4 py-3.5 font-semibold shadow-sm active:scale-95 transition-transform">
     {{ sub.name }}
   </button>
   {% endfor %}

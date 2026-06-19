@@ -1,0 +1,43 @@
+{% if relink_state.running %}
+
+<div hx-get="/tasks/relink/status"
+     hx-trigger="every 2s"
+     hx-target="#relink-section"
+     hx-swap="innerHTML"
+     class="text-center py-6">
+  <div class="w-6 h-6 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin mx-auto mb-3"></div>
+  <p class="text-sm text-gray-500">
+    {% if relink_state.total %}
+    Checked {{ relink_state.checked }} / {{ relink_state.total }} &middot; linked {{ relink_state.linked }}
+    {% else %}Scanning Drive&hellip;{% endif %}
+  </p>
+</div>
+
+{% else %}
+
+{% if relink_state.error %}
+<div class="bg-red-50 border border-red-100 rounded-2xl px-4 py-3 mb-3">
+  <p class="text-sm text-red-600">{{ relink_state.error }}</p>
+</div>
+{% elif relink_state.checked %}
+<div class="bg-white border border-gray-100 rounded-2xl px-4 py-3 mb-3 shadow-sm">
+  <p class="text-sm text-gray-700">
+    Linked <strong>{{ relink_state.linked }}</strong> of {{ relink_state.total }} documents.
+    {% if relink_state.total - relink_state.linked %}<span class="text-gray-400">{{ relink_state.total - relink_state.linked }} not matched.</span>{% endif %}
+  </p>
+</div>
+{% endif %}
+
+<form hx-post="/tasks/relink" hx-target="#relink-section" hx-swap="innerHTML" class="space-y-2">
+  <input name="old_prefix" placeholder="Old path prefix, e.g. /Car"
+    class="w-full bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-sm outline-none focus:border-blue-300 shadow-sm">
+  <input name="folder_input" placeholder="New folder path, e.g. /Documents/Car"
+    class="w-full bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-sm outline-none focus:border-blue-300 shadow-sm">
+  <p class="text-xs text-gray-400 px-1">Searches the new folder (and subfolders) for files matching broken documents in the old path. Matches on filename.</p>
+  <button type="submit"
+    class="w-full bg-blue-500 text-white rounded-2xl px-4 py-2.5 text-sm font-medium active:bg-blue-600 transition-colors shadow-sm">
+    Search &amp; re-link
+  </button>
+</form>
+
+{% endif %}

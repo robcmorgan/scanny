@@ -49,5 +49,30 @@
     </div>
   </nav>
 
+<script>
+function copyPath(text, btn) {
+  function done() { btn.textContent = '✓'; setTimeout(function(){btn.textContent='copy'},1400); }
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); done(); } catch(e) { btn.textContent = '!'; }
+    document.body.removeChild(ta);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else { fallback(); }
+}
+function applyLocalTimes(root) {
+  (root || document).querySelectorAll('[data-utc]').forEach(function(el) {
+    var d = new Date(el.dataset.utc + 'Z');
+    if (!isNaN(d)) el.textContent = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  });
+}
+document.addEventListener('DOMContentLoaded', function() { applyLocalTimes(); });
+document.addEventListener('htmx:afterSettle', function(e) { applyLocalTimes(e.detail.elt); });
+</script>
 </body>
 </html>

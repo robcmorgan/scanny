@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "_macros.html" import alpha_bg %}
 {% set active = 'library' %}
 {% block title %}{{ subgroup.name }} — {{ group.name }}{% endblock %}
 {% block content %}
@@ -15,7 +14,7 @@
 {% if documents %}
 <div class="grid grid-cols-2 gap-3">
   {% for doc in documents %}
-  <a href="/document/{{ doc.id }}" class="{{ alpha_bg(subgroup.name) }} rounded-2xl overflow-hidden shadow-sm block active:opacity-70 transition-opacity">
+  <a href="/document/{{ doc.id }}" class="{{ chip_color(group.name + '/' + subgroup.name) }} rounded-2xl overflow-hidden shadow-sm block active:opacity-70 transition-opacity">
     {% if doc.drive_file_id %}
     <div class="aspect-[3/4] bg-gray-100 overflow-hidden relative">
       <div class="absolute inset-0 flex items-center justify-center thumb-spinner">
@@ -36,9 +35,10 @@
     </div>
     {% endif %}
     <div class="px-3 py-2.5">
-      <p class="text-xs font-semibold truncate">
-        {{ doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported }}
-      </p>
+      {% set _name = doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported %}
+      {% if _name and 'scanned papers' not in _name %}
+      <p class="text-xs font-semibold truncate">{{ _name }}</p>
+      {% endif %}
       {% if doc.timestamp_from_filename %}
       <p class="text-xs opacity-50 mt-0.5">{{ doc.timestamp_from_filename.strftime('%d %b %Y') }}</p>
       {% endif %}

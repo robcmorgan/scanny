@@ -1,4 +1,16 @@
-{% from "_macros.html" import alpha_bg %}
+{% if groups %}
+<div class="space-y-2 mb-3">
+  {% for group in groups %}
+  <button
+    hx-get="/groups/{{ group.id }}/recent-subgroups"
+    hx-target="#subgroup-modal-content"
+    hx-on::after-request="openSubgroupSheet()"
+    class="w-full text-left {{ chip_color(group.name) }} rounded-2xl px-4 py-3.5 font-semibold shadow-sm active:scale-95 transition-transform">
+    {{ group.name }}
+  </button>
+  {% endfor %}
+</div>
+{% endif %}
 <div class="space-y-2 mt-2">
   {% for sub in subgroups %}
   <button
@@ -9,13 +21,13 @@
     data-filename-tag="{{ sub.filename_tag or '' }}"
     data-include-group="{{ 'true' if sub.group.include_in_path else 'false' }}"
     onclick="selectSubgroupFromEl(this)"
-    class="w-full text-left {{ alpha_bg(sub.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform"
+    class="w-full text-left {{ chip_color(sub.group.name + '/' + sub.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform"
   >
     <span class="text-xs opacity-60 block leading-tight">{{ sub.group.name }}</span>
     <span class="font-semibold block leading-snug">{{ sub.name }}</span>
   </button>
   {% endfor %}
-  {% if not subgroups %}
+  {% if not subgroups and not groups %}
   <p class="text-gray-400 py-4 text-center text-sm">No matches</p>
   {% endif %}
 </div>

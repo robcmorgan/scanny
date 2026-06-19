@@ -38,17 +38,34 @@
 {% endif %}
 
 {% if doc.drive_file_id %}
-<div class="w-full rounded-2xl overflow-hidden bg-gray-100 shadow-sm" style="height: calc(100vh - 160px)">
-  <embed
+
+<!-- Mobile: thumbnail card that opens PDF directly in the browser viewer -->
+<a href="/document/{{ doc.id }}/file"
+   class="block sm:hidden rounded-2xl overflow-hidden bg-gray-100 shadow-sm active:opacity-70 transition-opacity mb-3">
+  <div class="aspect-[3/4] relative">
+    <img src="/thumbnail/{{ doc.id }}?v={{ doc.drive_file_id[-4:] }}"
+         class="w-full h-full object-cover"
+         onerror="this.style.display='none'">
+    <div class="absolute inset-x-0 bottom-0 flex justify-center pb-5">
+      <span class="bg-white/90 backdrop-blur text-gray-800 font-semibold text-sm px-5 py-2 rounded-full shadow">
+        Open PDF
+      </span>
+    </div>
+  </div>
+</a>
+
+<!-- Desktop: inline iframe -->
+<div class="hidden sm:block w-full rounded-2xl overflow-hidden bg-gray-100 shadow-sm" style="height: calc(100vh - 160px)">
+  <iframe
     src="/document/{{ doc.id }}/file"
-    type="application/pdf"
-    class="w-full h-full"
-    id="pdf-embed">
+    class="w-full h-full border-0"
+    id="pdf-frame">
+  </iframe>
 </div>
-<p class="text-xs text-gray-400 text-center mt-2">
-  If the PDF doesn't display,
-  <a href="/document/{{ doc.id }}/file" target="_blank" class="text-blue-500 underline">open it directly</a>.
+<p class="hidden sm:block text-xs text-gray-400 text-center mt-2">
+  <a href="/document/{{ doc.id }}/file" target="_blank" class="text-blue-500 underline">Open in new tab</a>
 </p>
+
 {% else %}
 <div class="text-center py-12 text-gray-400">
   <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -1,0 +1,60 @@
+{% if scan_state.running %}
+
+<div hx-get="/tasks/broken-links/status"
+     hx-trigger="every 2s"
+     hx-target="#broken-links-section"
+     hx-swap="innerHTML"
+     class="text-center py-8">
+  <div class="w-6 h-6 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin mx-auto mb-3"></div>
+  <p class="text-sm text-gray-500">
+    Checking
+    {% if scan_state.total %}{{ scan_state.checked }} / {{ scan_state.total }}{% else %}…{% endif %}
+    files
+  </p>
+</div>
+
+{% else %}
+
+{% if broken_links %}
+<div class="space-y-2">
+  {% for doc in broken_links %}
+  {% set _key = doc.group.name if (not doc.subgroup or doc.subgroup.name == '/') else doc.group.name + '/' + doc.subgroup.name %}
+  {% set _path = doc.desired_full_path or ((doc.desired_folder_location + '/' + doc.desired_filename) if doc.desired_folder_location and doc.desired_filename else None) %}
+  {% if _path %}{% set _ns = namespace(p=_path) %}{% for _marker in ['My Drive', 'my drive', 'My drive'] %}{% if _marker in _ns.p %}{% set _ns.p = 'gd:' + _ns.p.split(_marker, 1)[1] %}{% endif %}{% endfor %}{% endif %}
+  <div class="{{ chip_color(_key) if doc.group else 'bg-gray-100' }} rounded-2xl shadow-sm overflow-hidden">
+    <a href="/document/{{ doc.id }}"
+      class="flex items-center justify-between px-4 py-3 block active:opacity-70 transition-opacity">
+      <div class="min-w-0">
+        <p class="text-xs opacity-60">
+          {{ doc.group.name if doc.group }}{% if doc.subgroup and doc.subgroup.name != '/' %} / {{ doc.subgroup.name }}{% endif %}
+        </p>
+        <p class="text-sm font-semibold truncate">
+          {{ doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported }}
+        </p>
+        {% if doc.timestamp_from_filename %}
+        <p class="text-xs opacity-50 mt-0.5">{{ doc.timestamp_from_filename.strftime('%d %b %Y') }}</p>
+        {% endif %}
+      </div>
+      <svg class="w-4 h-4 shrink-0 ml-2 text-red-500 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+      </svg>
+    </a>
+    {% if _path %}
+    <div class="flex items-start gap-2 px-4 pb-3 border-t border-black/5">
+      <p class="text-xs font-mono opacity-40 break-all leading-snug flex-1 pt-2">{{ _ns.p }}</p>
+      <button
+        onclick="copyPath(this.dataset.p,this)"
+        data-p="{{ _ns.p }}"
+        class="shrink-0 text-xs opacity-40 active:opacity-80 pt-2 font-sans">copy</button>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="bg-white border border-gray-100 rounded-2xl px-4 py-6 text-center text-gray-400 shadow-sm">
+  <p class="text-sm">{{ "No broken links found." if scan_state.checked is defined and scan_state.checked else "Tap Scan now to check Drive links." }}</p>
+</div>
+{% endif %}
+
+{% endif %}

@@ -6,7 +6,13 @@
 {% if pending_scans %}
 <div class="space-y-2">
   {% for scan in pending_scans %}
-  <div id="pending-{{ scan.id }}" class="flex items-center justify-between bg-gray-50 rounded-2xl px-4 py-3">
+  {% if scan.subgroup %}
+    {% set _key = scan.subgroup.group.name if scan.subgroup.name == '/' else scan.subgroup.group.name + '/' + scan.subgroup.name %}
+    {% set _color = chip_color(_key) %}
+  {% else %}
+    {% set _color = 'bg-gray-50' %}
+  {% endif %}
+  <div id="pending-{{ scan.id }}" class="flex items-center justify-between {{ _color }} rounded-2xl px-4 py-3">
     <div>
       {% if scan.subgroup %}
       <p class="text-sm font-semibold text-gray-800">
@@ -14,15 +20,15 @@
       </p>
       {% endif %}
       {% if scan.item_one_off_description %}
-      <p class="text-xs text-gray-400 italic">{{ scan.item_one_off_description }}</p>
+      <p class="text-xs text-gray-600 italic">{{ scan.item_one_off_description }}</p>
       {% endif %}
-      <p class="text-xs text-gray-300 mt-0.5">{{ scan.created_at.strftime('%H:%M') }}</p>
+      <p class="text-xs opacity-50 mt-0.5" data-utc="{{ scan.created_at.isoformat() }}">{{ scan.created_at.strftime('%H:%M') }}</p>
     </div>
     <button
       data-pending-id="{{ scan.id }}"
       data-state="idle"
       onclick="confirmDelete(this)"
-      class="ml-2 shrink-0 text-xs text-gray-300 transition-all duration-150">
+      class="ml-2 shrink-0 text-xs text-gray-400 transition-all duration-150">
       <span class="idle-label">cancel</span>
       <span class="confirm-label hidden bg-red-500 text-white px-2.5 py-1 rounded-full font-medium">sure?</span>
     </button>
