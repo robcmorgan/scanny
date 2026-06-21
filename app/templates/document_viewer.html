@@ -28,15 +28,24 @@
     Library
   </a>
   {% endif %}
-  {% if doc.drive_file_id %}
-  <a href="https://drive.google.com/file/d/{{ doc.drive_file_id }}/view" target="_blank"
-     class="flex items-center gap-1 text-xs text-gray-400 active:opacity-60">
-    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-    </svg>
-    Drive
-  </a>
-  {% endif %}
+  <div class="flex items-center gap-3">
+    <button onclick="document.getElementById('move-modal').classList.remove('hidden')"
+      class="text-xs text-gray-500 font-medium flex items-center gap-1 active:opacity-60">
+      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+      </svg>
+      Move
+    </button>
+    {% if doc.drive_file_id %}
+    <a href="https://drive.google.com/file/d/{{ doc.drive_file_id }}/view" target="_blank"
+       class="flex items-center gap-1 text-xs text-gray-400 active:opacity-60">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+      </svg>
+      Drive
+    </a>
+    {% endif %}
+  </div>
 </div>
 
 {% set _default = is_default_name(doc, doc.subgroup) %}
@@ -141,17 +150,6 @@
     Save changes
   </button>
 </form>
-
-<!-- Move to… button -->
-<div class="mt-4">
-  <button onclick="document.getElementById('move-modal').classList.remove('hidden')"
-    class="text-sm text-gray-400 font-medium flex items-center gap-1.5 active:opacity-60">
-    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-    </svg>
-    Move to…
-  </button>
-</div>
 
 <script>
 function editToggleTodo() {
