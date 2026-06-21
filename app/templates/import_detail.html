@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% set active = 'import' %}
-{% block title %}{{ file.name }} — Phone{% endblock %}
+{% block title %}{% if file.name.startswith('Scanned_') %}{{ file.createdTime[:10] }}{% else %}{{ file.name }}{% endif %} — Phone{% endblock %}
 {% block content %}
+{% set is_default_name = file.name.startswith('Scanned_') %}
 
 <a href="/import" class="flex items-center gap-1 text-sm text-gray-400 mb-4 active:opacity-60">
   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -35,7 +36,7 @@
              onerror="this.style.display='none'">
       </a>
       <div class="flex-1 min-w-0 flex flex-col justify-center gap-1">
-        <p class="text-sm font-medium text-gray-900 leading-snug break-all">{{ file.name }}</p>
+        {% if not is_default_name %}<p class="text-sm font-medium text-gray-900 leading-snug break-all">{{ file.name }}</p>{% endif %}
         <p class="text-xs text-gray-400">{{ file.createdTime[:10] }}</p>
         <a href="/import/{{ file.id }}/view" target="_blank"
            class="text-xs text-blue-500 font-medium active:opacity-60">Open ↗</a>
@@ -44,7 +45,7 @@
 
     <!-- Desktop: compact info card (no thumbnail, doc is shown left) -->
     <div class="hidden sm:block bg-white rounded-2xl p-3 shadow-sm mb-5">
-      <p class="text-sm font-medium text-gray-900 break-all leading-snug mb-0.5">{{ file.name }}</p>
+      {% if not is_default_name %}<p class="text-sm font-medium text-gray-900 break-all leading-snug mb-0.5">{{ file.name }}</p>{% endif %}
       <p class="text-xs text-gray-400 mb-2">{{ file.createdTime[:10] }}</p>
       <a href="/import/{{ file.id }}/view" target="_blank"
          class="text-xs text-blue-500 font-medium">Open in new tab ↗</a>

@@ -756,6 +756,28 @@ async def document_move_subgroups(
     })
 
 
+@app.post("/document/{document_id}/update")
+async def update_document(
+    document_id: int,
+    item_one_off_description: str = Form(""),
+    comment: str = Form(""),
+    rob_task: Optional[str] = Form(None),
+    beccy_task: Optional[str] = Form(None),
+    task_note: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404)
+    doc.assigned_item_one_off_description = item_one_off_description.strip() or None
+    doc.assigned_comment = comment.strip() or None
+    doc.assigned_rob_task = rob_task == "1"
+    doc.assigned_beccy_task = beccy_task == "1"
+    doc.assigned_task_note = task_note.strip() or None
+    await db.commit()
+    return RedirectResponse(f"/document/{document_id}", status_code=303)
+
+
 @app.post("/document/{document_id}/recategorize")
 async def recategorize_document(
     document_id: int,

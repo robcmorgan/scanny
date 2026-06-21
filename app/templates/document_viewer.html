@@ -100,6 +100,48 @@
 </div>
 {% endif %}
 
+<!-- Edit form -->
+<form action="/document/{{ doc.id }}/update" method="post" class="mt-5 space-y-3">
+
+  <input type="text" name="item_one_off_description"
+    value="{{ doc.assigned_item_one_off_description or '' }}"
+    placeholder="Description (optional)"
+    autocomplete="off"
+    class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+
+  <textarea name="comment" rows="2"
+    placeholder="Notes"
+    class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none">{{ doc.assigned_comment or '' }}</textarea>
+
+  <div class="bg-white rounded-2xl px-4 py-3.5 shadow-sm">
+    <div class="flex gap-6">
+      <label class="flex items-center gap-2.5 cursor-pointer">
+        <input type="checkbox" name="rob_task" value="1" {% if doc.assigned_rob_task %}checked{% endif %}
+          id="edit-rob-todo" onchange="editToggleTodo()"
+          class="w-5 h-5 rounded accent-orange-500">
+        <span class="text-sm font-medium text-gray-700">Rob to-do</span>
+      </label>
+      <label class="flex items-center gap-2.5 cursor-pointer">
+        <input type="checkbox" name="beccy_task" value="1" {% if doc.assigned_beccy_task %}checked{% endif %}
+          id="edit-beccy-todo" onchange="editToggleTodo()"
+          class="w-5 h-5 rounded accent-pink-500">
+        <span class="text-sm font-medium text-gray-700">Beccy to-do</span>
+      </label>
+    </div>
+    <div id="edit-todo-note" class="{% if not doc.assigned_rob_task and not doc.assigned_beccy_task %}hidden {% endif %}mt-3">
+      <input type="text" name="task_note"
+        value="{{ doc.assigned_task_note or '' }}"
+        placeholder="What needs doing?"
+        class="w-full bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+    </div>
+  </div>
+
+  <button type="submit"
+    class="w-full bg-blue-600 active:bg-blue-700 text-white py-3.5 rounded-2xl text-sm font-bold shadow-sm">
+    Save changes
+  </button>
+</form>
+
 <!-- Move to… button -->
 <div class="mt-4">
   <button onclick="document.getElementById('move-modal').classList.remove('hidden')"
@@ -110,6 +152,13 @@
     Move to…
   </button>
 </div>
+
+<script>
+function editToggleTodo() {
+  var either = document.getElementById('edit-rob-todo').checked || document.getElementById('edit-beccy-todo').checked;
+  document.getElementById('edit-todo-note').classList.toggle('hidden', !either);
+}
+</script>
 
 <!-- Move modal -->
 <div id="move-modal" class="hidden fixed inset-0 z-50">
