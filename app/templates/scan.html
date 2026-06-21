@@ -17,21 +17,27 @@
   hx-get="/pending"
   hx-target="#pending-sheet-content"
   hx-on::after-request="openPendingSheet()"
-  class="flex items-center gap-2 mb-4 px-1 w-full text-left min-w-0">
-  <span class="text-xs text-gray-500 truncate flex-1 min-w-0">
-    {%- if last.subgroup -%}
-    <span class="font-medium">{{ last.subgroup.group.name }}{% if last.subgroup.name != '/' %} / {{ last.subgroup.name }}{% endif %}</span>
+  data-task-row=""
+  class="bg-gray-900/[.06] rounded-2xl px-4 py-3 mb-4 w-full text-left flex items-center gap-2.5 min-w-0 active:opacity-70 transition-opacity">
+  <div class="flex-1 min-w-0">
+    <div class="flex items-center gap-1.5 min-w-0">
+      {%- if last.subgroup -%}
+      <span class="text-xs font-semibold text-gray-700 truncate">{{ last.subgroup.group.name }}{% if last.subgroup.name != '/' %} / {{ last.subgroup.name }}{% endif %}</span>
+      {%- endif -%}
+      <span class="text-xs text-gray-400 shrink-0" data-utc="{{ last.created_at.isoformat() }}">{{ last.created_at.strftime('%H:%M') }}</span>
+    </div>
+    {%- if last.item_one_off_description or last.override_filename -%}
+    <p class="text-xs text-gray-500 truncate mt-0.5">{{ last.item_one_off_description or last.override_filename }}</p>
     {%- endif -%}
-    {%- if last.item_one_off_description %}<span class="text-gray-400"> — {{ last.item_one_off_description }}</span>
-    {%- elif last.override_filename %}<span class="text-gray-400"> — {{ last.override_filename }}</span>
-    {%- endif -%}
-  </span>
+  </div>
   {% if last.rob_task or last.beccy_task %}
   <svg class="w-3.5 h-3.5 shrink-0 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
     <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
   </svg>
   {% endif %}
-  <span class="text-xs text-gray-300 shrink-0" data-utc="{{ last.created_at.isoformat() }}">{{ last.created_at.strftime('%H:%M') }}</span>
+  <svg class="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+  </svg>
 </button>
 {% endif %}
 
@@ -42,25 +48,57 @@
   <div class="grid grid-cols-2 gap-3">
 
     <!-- Left: groups -->
-    <div>
-      <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Groups</p>
-      <div id="groups-col" class="space-y-2">
-        {% for group in quick_groups %}
-        <button
-          hx-get="/groups/{{ group.id }}/recent-subgroups"
-          hx-target="#subgroup-modal-content"
-          hx-on::after-request="openSubgroupSheet()"
-          class="w-full text-left {{ chip_color(group.name) }} rounded-2xl px-4 py-3.5 font-semibold shadow-sm active:scale-95 transition-transform">
-          {{ group.name }}
+    <div data-groups-area="">
+      <!-- Normal view -->
+      <div data-view="normal">
+        <button onclick="toggleGroupsAZ(this)"
+          class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1 flex items-center gap-1 active:opacity-60">
+          Groups
+          <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M7 12h10M11 17h2"/>
+          </svg>
         </button>
-        {% endfor %}
+        <div id="groups-col">
+          {% for group in quick_groups %}
+          <button
+            hx-get="/groups/{{ group.id }}/recent-subgroups"
+            hx-target="#subgroup-modal-content"
+            hx-on::after-request="openSubgroupSheet()"
+            class="w-full text-left {{ chip_color(group.name) }} rounded-2xl px-4 py-3.5 font-semibold shadow-sm active:scale-95 transition-transform">
+            {{ group.name }}
+          </button>
+          {% endfor %}
+        </div>
+        <div class="flex justify-center mt-2"><div class="w-6 h-1 bg-gray-200 rounded-full"></div></div>
+      </div>
+      <!-- A-Z view -->
+      <div data-view="az" class="hidden">
+        <button onclick="toggleGroupsAZ(this)"
+          class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1 flex items-center gap-1 active:opacity-60">
+          A-Z
+          <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/>
+          </svg>
+        </button>
+        <div id="groups-col-az" class="space-y-1.5 overflow-y-auto">
+          {% for group in quick_groups %}
+          <button
+            hx-get="/groups/{{ group.id }}/recent-subgroups"
+            hx-target="#subgroup-modal-content"
+            hx-on::after-request="openSubgroupSheet()"
+            class="w-full text-left {{ chip_color(group.name) }} rounded-xl px-3 py-2 text-sm font-medium active:scale-95 transition-transform">
+            {{ group.name }}
+          </button>
+          {% endfor %}
+        </div>
+        <div class="flex justify-center mt-2"><div class="w-6 h-1 bg-gray-200 rounded-full"></div></div>
       </div>
     </div>
 
     <!-- Right: quick pairs -->
     <div>
       <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Last used</p>
-      <div id="pairs-col" class="space-y-2">
+      <div id="pairs-col">
         {% for sub in quick_pairs %}
         <button
           data-subgroup-id="{{ sub.id }}"
@@ -83,14 +121,6 @@
 
   </div>
 
-  <!-- Search button -->
-  <button onclick="openSearchSheet()"
-    class="mt-5 w-full bg-white rounded-2xl px-4 py-3.5 flex items-center gap-3 shadow-sm text-gray-400 active:scale-95 transition-transform">
-    <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"/>
-    </svg>
-    <span class="text-sm">Search all subgroups…</span>
-  </button>
 
 </div>
 
@@ -383,6 +413,8 @@ function showToast(msg) {
   t._timer = setTimeout(() => t.classList.add('hidden'), 3500);
 }
 
+window._onSearchNav = openSearchSheet;
+
 document.addEventListener('keydown', function(e) {
   const confirmVisible       = !document.getElementById('step-confirm').classList.contains('hidden');
   const chooseVisible        = !document.getElementById('step-choose').classList.contains('hidden');
@@ -472,27 +504,47 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// Trim columns so they fit without scrolling
+// Fill columns to screen height — trim overflow, stretch visible items
 (function trimToScreen() {
-  // Available height = viewport minus bottom nav (64px) minus top padding (20px) minus search button (~60px) minus gap
-  const available = window.innerHeight - 64 - 20 - 68;
+  const taskRow = document.querySelector('[data-task-row]');
+  const taskH = taskRow ? taskRow.offsetHeight + 16 : 0;
+  const available = window.innerHeight - 64 - 20 - taskH - 8;
 
-  function trimCol(colId) {
+  // Set AZ scroll container height
+  const azCol = document.getElementById('groups-col-az');
+  if (azCol) azCol.style.maxHeight = (available - 56) + 'px';
+
+  function fillCol(colId) {
     const col = document.getElementById(colId);
     if (!col) return;
     const items = Array.from(col.children);
-    // Work out how much space the header label takes (sibling above col)
-    const headerHeight = 28;
-    let used = headerHeight;
     const gap = 8;
+    const colH = available - 28; // 28px for the header label above
+
+    // Reset prior state
+    items.forEach(el => { el.style.flex = ''; el.style.display = ''; el.style.marginTop = '0'; });
+    col.style.cssText = '';
+
+    // Determine how many fit at natural height
+    let used = 0, visCount = 0;
     items.forEach((el, i) => {
-      used += el.offsetHeight + (i > 0 ? gap : 0);
-      if (used > available) el.style.display = 'none';
+      const h = el.offsetHeight + (i > 0 ? gap : 0);
+      if (used + h <= colH) { used += h; visCount++; }
+      else el.style.display = 'none';
+    });
+
+    // Stretch visible items to fill column height
+    col.style.cssText = `display:flex;flex-direction:column;gap:${gap}px;height:${colH}px;`;
+    items.slice(0, visCount).forEach(el => {
+      el.style.flex = '1';
+      el.style.display = 'flex';
+      el.style.flexDirection = 'column';
+      el.style.justifyContent = 'center';
     });
   }
 
-  trimCol('groups-col');
-  trimCol('pairs-col');
+  fillCol('groups-col');
+  fillCol('pairs-col');
 })();
 </script>
 

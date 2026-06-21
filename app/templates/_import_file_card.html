@@ -1,0 +1,18 @@
+{% set is_default_name = file.name.startswith('Scanned_') %}
+<a id="card-{{ file.id }}" href="/import/{{ file.id }}"
+   class="col-span-1 bg-white rounded-2xl overflow-hidden shadow-sm active:opacity-75 transition-opacity block">
+  <div class="aspect-[3/4] bg-gray-100 relative">
+    {% if file.source == 'scanner' %}
+    <div class="absolute top-1.5 left-1.5 z-10 bg-black/50 text-white text-[8px] font-semibold px-1.5 py-0.5 rounded-full tracking-wide">Scanner</div>
+    {% endif %}
+    <img src="/import/thumbnail/{{ file.id }}"
+         class="w-full h-full object-cover"
+         onerror="this.style.display='none'">
+  </div>
+  <div class="px-2 py-1.5">
+    {% if not is_default_name %}
+    <p class="text-[10px] text-gray-900 font-medium leading-snug break-all">{{ file.name }}</p>
+    {% endif %}
+    <p class="text-[10px] text-gray-400 {% if not is_default_name %}mt-0.5{% endif %}">{{ file.createdTime[:10] }}</p>
+  </div>
+</a>

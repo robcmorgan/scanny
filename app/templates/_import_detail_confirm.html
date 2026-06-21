@@ -1,0 +1,113 @@
+<div class="flex items-center gap-2 mb-4">
+  <!-- X cancel → back to picker -->
+  <button type="button"
+    hx-get="/import/{{ file_id }}/detail-groups"
+    hx-target="#picker-section"
+    hx-swap="innerHTML"
+    class="w-11 h-11 flex items-center justify-center text-gray-400 active:opacity-60 shrink-0 -ml-1">
+    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+    </svg>
+  </button>
+  <!-- Subgroup chip -->
+  <div class="{{ chip_color(color_key) }} flex-1 rounded-2xl px-4 py-2.5 min-w-0">
+    <span class="text-xs opacity-60 block leading-tight">{{ group.name }}</span>
+    <span class="font-semibold leading-snug">{{ subgroup_label }}</span>
+  </div>
+  <!-- + submit -->
+  <button type="submit" form="import-confirm-form"
+    class="w-11 h-11 bg-blue-600 active:bg-blue-700 text-white text-2xl font-bold rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+    +
+  </button>
+</div>
+
+<form id="import-confirm-form" action="/import/{{ file_id }}/file" method="post">
+  <input type="hidden" name="subgroup_id" value="{{ subgroup.id }}">
+  <input type="hidden" name="from_detail" value="1">
+
+  <!-- Filename preview -->
+  <div class="bg-white rounded-2xl px-4 py-3 mb-4 shadow-sm">
+    <p class="text-xs text-gray-400 mb-1">Filename</p>
+    <p id="import-fn-preview" class="font-mono text-xs text-gray-700 break-all"></p>
+  </div>
+
+  <div class="space-y-3">
+
+    <input type="text" name="item_one_off_description" id="import-one-off"
+      oninput="importSyncOneOff()"
+      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+      placeholder="One-off description (optional)">
+
+    <textarea name="comment" rows="2"
+      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+      placeholder="Notes"></textarea>
+
+    <div class="bg-white rounded-2xl px-4 py-3.5 shadow-sm">
+      <div class="flex gap-6">
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" name="rob_task" value="1" id="import-rob-todo" onchange="importToggleTodo()"
+            class="w-5 h-5 rounded accent-orange-500">
+          <span class="text-sm font-medium text-gray-700">Rob to-do</span>
+        </label>
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" name="beccy_task" value="1" id="import-beccy-todo" onchange="importToggleTodo()"
+            class="w-5 h-5 rounded accent-pink-500">
+          <span class="text-sm font-medium text-gray-700">Beccy to-do</span>
+        </label>
+      </div>
+      <div id="import-todo-note" class="hidden mt-3">
+        <input type="text" name="task_note"
+          class="w-full bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          placeholder="What needs doing?">
+      </div>
+    </div>
+
+    <input type="text" name="override_filename" id="import-override"
+      oninput="importOverrideManual=this.value.length>0; importUpdatePreview()"
+      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm font-mono shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+      placeholder="Filename override (optional)">
+
+  </div>
+</form>
+
+<script>
+(function() {
+  var driveFilename = {{ drive_filename | tojson }};
+  var filenameTag   = {{ filename_tag | tojson }};
+  var subgroupLabel = {{ subgroup_label | tojson }};
+  var scanDate      = {{ scan_date_str | tojson }};
+  var scanTime      = {{ scan_time_str | tojson }};
+  var ext = driveFilename.split('.').pop() || 'pdf';
+  window.importOverrideManual = false;
+
+  window.importSyncOneOff = function() {
+    if (!importOverrideManual) {
+      document.getElementById('import-override').value = document.getElementById('import-one-off').value;
+    }
+    importUpdatePreview();
+  };
+
+  window.importUpdatePreview = function() {
+    var override = document.getElementById('import-override').value.trim();
+    var preview = document.getElementById('import-fn-preview');
+    if (!preview) return;
+    if (override) {
+      preview.textContent = override.replace(/\.[^.]+$/, '') + '.' + ext;
+      return;
+    }
+    var label = filenameTag || subgroupLabel;
+    preview.textContent = scanDate + ' ' + label + ' scanned papers-' + scanTime + '.' + ext;
+  };
+
+  window.importToggleTodo = function() {
+    var either = document.getElementById('import-rob-todo').checked || document.getElementById('import-beccy-todo').checked;
+    document.getElementById('import-todo-note').classList.toggle('hidden', !either);
+  };
+
+  importUpdatePreview();
+  setTimeout(function() {
+    var inp = document.getElementById('import-one-off');
+    if (inp) inp.focus();
+  }, 50);
+})();
+</script>

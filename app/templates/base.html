@@ -13,39 +13,69 @@
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
 
-  <main class="flex-1 max-w-xl w-full mx-auto px-4 pt-5 pb-24">
+  <main class="flex-1 max-w-xl w-full mx-auto px-4 pt-5 pb-28">
     {% block content %}{% endblock %}
   </main>
 
   <!-- Bottom tab bar -->
   <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 pb-safe z-30">
     <div class="max-w-xl mx-auto flex">
-      <a href="/" class="flex-1 flex flex-col items-center pt-2 pb-3 gap-0.5 {% if active == 'scan' %}text-blue-600{% else %}text-gray-400{% endif %}">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="{% if active == 'scan' %}2.5{% else %}1.8{% endif %}">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+
+      <!-- Phone / Import -->
+      <a href="/import" class="flex-1 flex flex-col items-center pt-2 pb-3 gap-0.5 {% if active == 'import' %}text-blue-600{% else %}text-gray-400{% endif %}">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="{% if active == 'import' %}2.2{% else %}1.7{% endif %}">
+          <rect x="7" y="2" width="10" height="18" rx="2" stroke-linejoin="round"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0l-2.5-2.5M12 12l2.5-2.5"/>
+          <line x1="10" y1="18.5" x2="14" y2="18.5" stroke-linecap="round"/>
         </svg>
-        <span class="text-xs font-medium">Scan</span>
+        <span class="text-[10px] font-medium">Phone</span>
       </a>
+
+      <!-- Scan -->
+      <a href="/" class="flex-1 flex flex-col items-center pt-2 pb-3 gap-0.5 {% if active == 'scan' %}text-blue-600{% else %}text-gray-400{% endif %}">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="{% if active == 'scan' %}2.2{% else %}1.7{% endif %}">
+          <rect x="2" y="8" width="20" height="9" rx="1.5" stroke-linejoin="round"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 8V5h12v3"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 17v2h8v-2"/>
+          <line x1="2" y1="12.5" x2="22" y2="12.5" stroke-dasharray="3 2"/>
+        </svg>
+        <span class="text-[10px] font-medium">Scan</span>
+      </a>
+
+      <!-- Library -->
       <a href="/library" class="flex-1 flex flex-col items-center pt-2 pb-3 gap-0.5 {% if active == 'library' %}text-blue-600{% else %}text-gray-400{% endif %}">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="{% if active == 'library' %}2.5{% else %}1.8{% endif %}">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="{% if active == 'library' %}2.2{% else %}1.7{% endif %}">
           <path stroke-linecap="round" stroke-linejoin="round" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/>
         </svg>
-        <span class="text-xs font-medium">Library</span>
+        <span class="text-[10px] font-medium">Library</span>
       </a>
+
+      <!-- Tasks -->
       <a href="/tasks" class="flex-1 flex flex-col items-center pt-2 pb-3 gap-0.5 {% if active == 'tasks' %}text-blue-600{% else %}text-gray-400{% endif %}">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="{% if active == 'tasks' %}2.5{% else %}1.8{% endif %}">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="{% if active == 'tasks' %}2.2{% else %}1.7{% endif %}">
           <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
         </svg>
-        <span class="text-xs font-medium">Tasks</span>
+        <span class="text-[10px] font-medium">Tasks</span>
       </a>
+
+      <!-- Search -->
+      <a href="/search" onclick="if(window._onSearchNav){window._onSearchNav();return false;}"
+         class="flex-1 flex flex-col items-center pt-2 pb-3 gap-0.5 {% if active == 'search' %}text-blue-600{% else %}text-gray-400{% endif %}">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="{% if active == 'search' %}2.2{% else %}1.7{% endif %}">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/>
+        </svg>
+        <span class="text-[10px] font-medium">Search</span>
+      </a>
+
+      <!-- Settings -->
       <a href="/settings" class="flex-1 flex flex-col items-center pt-2 pb-3 gap-0.5 {% if active == 'settings' %}text-blue-600{% else %}text-gray-400{% endif %}">
-        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="{% if active == 'settings' %}2.5{% else %}1.8{% endif %}">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="{% if active == 'settings' %}2.2{% else %}1.7{% endif %}">
           <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
           <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
         </svg>
-        <span class="text-xs font-medium">Settings</span>
+        <span class="text-[10px] font-medium">Settings</span>
       </a>
+
     </div>
   </nav>
 
@@ -65,14 +95,71 @@ function copyPath(text, btn) {
     navigator.clipboard.writeText(text).then(done).catch(fallback);
   } else { fallback(); }
 }
+
 function applyLocalTimes(root) {
   (root || document).querySelectorAll('[data-utc]').forEach(function(el) {
     var d = new Date(el.dataset.utc + 'Z');
     if (!isNaN(d)) el.textContent = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
   });
 }
-document.addEventListener('DOMContentLoaded', function() { applyLocalTimes(); });
-document.addEventListener('htmx:afterSettle', function(e) { applyLocalTimes(e.detail.elt); });
+
+function toggleGroupsAZ(btn) {
+  var area = btn.closest('[data-groups-area]');
+  var normal = area.querySelector('[data-view="normal"]');
+  var az = area.querySelector('[data-view="az"]');
+  normal.classList.toggle('hidden');
+  az.classList.toggle('hidden');
+}
+
+function initGroupsPull(area) {
+  var sy = 0, sx = 0;
+  area.addEventListener('touchstart', function(e) {
+    sy = e.touches[0].clientY; sx = e.touches[0].clientX;
+  }, {passive: true});
+  area.addEventListener('touchend', function(e) {
+    var dy = e.changedTouches[0].clientY - sy;
+    var dx = Math.abs(e.changedTouches[0].clientX - sx);
+    if (dx > Math.abs(dy) * 0.7 || Math.abs(dy) < 28) return;
+    var normal = area.querySelector('[data-view="normal"]');
+    var az = area.querySelector('[data-view="az"]');
+    if (!normal || !az) return;
+    if (dy < 0 && !normal.classList.contains('hidden')) {
+      normal.classList.add('hidden'); az.classList.remove('hidden');
+    } else if (dy > 45 && !az.classList.contains('hidden')) {
+      var scrollEl = az.querySelector('[class*="overflow-y"]');
+      if (!scrollEl || scrollEl.scrollTop < 5) {
+        az.classList.add('hidden'); normal.classList.remove('hidden');
+      }
+    }
+  }, {passive: true});
+  // Desktop: mouse wheel triggers the same switch
+  var wheelCooldown = false;
+  area.addEventListener('wheel', function(e) {
+    if (wheelCooldown) return;
+    var normal = area.querySelector('[data-view="normal"]');
+    var az = area.querySelector('[data-view="az"]');
+    if (!normal || !az) return;
+    if (e.deltaY < -20 && !normal.classList.contains('hidden')) {
+      normal.classList.add('hidden'); az.classList.remove('hidden');
+      wheelCooldown = true; setTimeout(function() { wheelCooldown = false; }, 600);
+    } else if (e.deltaY > 20 && !az.classList.contains('hidden')) {
+      var scrollEl = az.querySelector('[class*="overflow-y"]');
+      if (!scrollEl || scrollEl.scrollTop < 5) {
+        az.classList.add('hidden'); normal.classList.remove('hidden');
+        wheelCooldown = true; setTimeout(function() { wheelCooldown = false; }, 600);
+      }
+    }
+  }, {passive: true});
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  applyLocalTimes();
+  document.querySelectorAll('[data-groups-area]').forEach(initGroupsPull);
+});
+document.addEventListener('htmx:afterSettle', function(e) {
+  applyLocalTimes(e.detail.elt);
+  (e.detail.elt || document).querySelectorAll('[data-groups-area]').forEach(initGroupsPull);
+});
 </script>
 </body>
 </html>

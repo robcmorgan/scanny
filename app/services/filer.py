@@ -68,6 +68,7 @@ def file_document(
     include_group_in_path: bool,
     date_override: Optional[date],
     override_filename: Optional[str],
+    source_folder_id: Optional[str] = None,
 ) -> tuple[str, str, str]:
     """Move and rename a Drive file. Returns (folder_path, filename, new_parent_folder_id)."""
     scan_dt = parse_date_from_filename(drive_file["name"]) or datetime.utcnow()
@@ -86,5 +87,6 @@ def file_document(
     for part in [p for p in folder_path.strip("/").split("/") if p]:
         parent_id = get_or_create_folder(parent_id, part)
 
-    move_and_rename_file(drive_file["id"], filename, parent_id, settings.drive_incoming_folder_id)
+    old_parent = source_folder_id or settings.drive_incoming_folder_id
+    move_and_rename_file(drive_file["id"], filename, parent_id, old_parent)
     return folder_path, filename, parent_id

@@ -1,0 +1,35 @@
+<div class="flex items-center gap-2 mb-4">
+  <button type="button"
+    hx-get="/document/{{ document_id }}/move-groups"
+    hx-target="#move-modal-body"
+    hx-swap="innerHTML"
+    class="flex items-center gap-1 text-sm text-gray-400 active:opacity-60">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+    Groups
+  </button>
+  <p class="text-sm font-semibold text-gray-700 flex-1">{{ group.name }}</p>
+  <button onclick="document.getElementById('move-modal').classList.add('hidden')"
+    class="text-gray-400 text-2xl leading-none w-8 h-8 flex items-center justify-center">&times;</button>
+</div>
+
+{% if slash_sub %}
+<button
+  onclick="document.getElementById('move-subgroup-id').value='{{ slash_sub.id }}';document.getElementById('move-form').submit()"
+  class="{{ chip_color(group.name) }} w-2/3 text-left font-medium ring-2 ring-inset ring-black/25 rounded-2xl px-4 py-2.5 mb-2 active:scale-95 transition-transform block">
+  {{ group.name }}
+</button>
+{% endif %}
+<div class="space-y-2 pb-4">
+{% for sub in subgroups %}
+<button
+  onclick="document.getElementById('move-subgroup-id').value='{{ sub.id }}';document.getElementById('move-form').submit()"
+  class="{{ chip_color(group.name + '/' + sub.name) }} w-full text-left font-semibold rounded-2xl px-4 py-3.5 active:scale-95 transition-transform block">
+  {{ sub.name }}
+</button>
+{% endfor %}
+</div>
+{% if not subgroups and not slash_sub %}
+<p class="text-sm text-gray-400 text-center py-4">No subgroups</p>
+{% endif %}

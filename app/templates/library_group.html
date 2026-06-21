@@ -10,27 +10,79 @@
   Library
 </a>
 
-<p class="text-2xl font-bold text-gray-900 mb-4">{{ group.name }}</p>
+<div class="flex items-center justify-between mb-4">
+  <p class="text-2xl font-bold text-gray-900">{{ group.name }}</p>
+  <button onclick="openNewSubgroupSheet()"
+    class="w-8 h-8 bg-blue-600 active:bg-blue-700 text-white text-xl font-bold rounded-xl flex items-center justify-center shadow-sm shrink-0">+</button>
+</div>
 
 <div class="space-y-2">
   {% if slash_sub %}
   {% set sub, count = slash_sub %}
   <a href="/library/{{ group.id }}/{{ sub.id }}"
-    class="flex items-center justify-between {{ chip_color(group.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform">
-    <span class="font-semibold italic opacity-70">Just {{ group.name }}</span>
+    class="inline-flex w-2/3 items-center justify-between {{ chip_color(group.name) }} rounded-2xl px-4 py-3.5 shadow-sm ring-2 ring-inset ring-black/25 active:scale-95 transition-transform">
+    <span class="font-medium">{{ group.name }}</span>
     <span class="text-xs opacity-50">{{ count }}</span>
   </a>
   {% endif %}
-  {% for subgroup, doc_count in subgroups %}
+  {% for subgroup, doc_count, broken_count in subgroups %}
   <a href="/library/{{ group.id }}/{{ subgroup.id }}"
     class="flex items-center justify-between {{ chip_color(group.name + '/' + subgroup.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform">
     <span class="font-semibold">{{ subgroup.name }}</span>
-    <span class="text-xs opacity-50">{{ doc_count }}</span>
+    <div class="flex items-center gap-1.5">
+      {% if broken_count %}
+      <svg class="w-3.5 h-3.5 text-red-500 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+      </svg>
+      {% endif %}
+      <span class="text-xs opacity-50">{{ doc_count }}</span>
+    </div>
   </a>
   {% endfor %}
   {% if not subgroups and not slash_sub %}
-  <p class="text-gray-400 text-sm text-center py-8">No documents yet</p>
+  <p class="text-gray-400 text-sm text-center py-8">No subgroups yet</p>
   {% endif %}
 </div>
+
+<!-- Backdrop -->
+<div id="lib-backdrop" class="hidden fixed inset-0 bg-black/50 z-40" onclick="closeLibSheet()"></div>
+
+<!-- New Subgroup sheet -->
+<div id="new-subgroup-sheet" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-xl mx-auto">
+  <div class="bg-white rounded-t-3xl shadow-2xl px-4 pb-10 pt-3">
+    <div class="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5"></div>
+    <p class="text-lg font-bold text-gray-900 mb-1">New Subgroup</p>
+    <p class="text-sm text-gray-400 mb-4">{{ group.name }}</p>
+    <form action="/library/{{ group.id }}/subgroups" method="post" class="space-y-3">
+      <input type="text" name="name" id="new-sub-name"
+        placeholder="Subgroup name"
+        required autocomplete="off"
+        class="w-full bg-gray-100 rounded-2xl px-4 py-3.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <input type="text" name="filename_tag"
+        placeholder="Filename tag (optional)"
+        autocomplete="off"
+        class="w-full bg-gray-100 rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <button type="submit"
+        class="w-full bg-blue-600 active:bg-blue-700 text-white py-4 rounded-2xl text-base font-bold shadow-sm">
+        Create Subgroup
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+function openNewSubgroupSheet() {
+  document.getElementById('lib-backdrop').classList.remove('hidden');
+  document.getElementById('new-subgroup-sheet').classList.remove('hidden');
+  setTimeout(function() { document.getElementById('new-sub-name').focus(); }, 50);
+}
+function closeLibSheet() {
+  document.getElementById('lib-backdrop').classList.add('hidden');
+  document.getElementById('new-subgroup-sheet').classList.add('hidden');
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeLibSheet();
+});
+</script>
 
 {% endblock %}

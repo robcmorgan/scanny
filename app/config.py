@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     google_token_file: str = "../data/token.json"
     poll_interval_seconds: int = 30
     app_base_url: str = "http://localhost:9841"
+    drive_import_folder_id: str = ""
 
     class Config:
         env_file = "../.env"

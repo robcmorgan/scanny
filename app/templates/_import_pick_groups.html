@@ -1,0 +1,74 @@
+<div id="card-{{ file_id }}" class="bg-white rounded-2xl shadow-sm col-span-2">
+  <div class="px-3 pt-3 pb-3">
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-sm font-semibold text-gray-700">File to…</p>
+      <button
+        hx-get="/import/{{ file_id }}/card"
+        hx-target="#card-{{ file_id }}"
+        hx-swap="outerHTML"
+        class="text-xs text-gray-400 active:opacity-60">Cancel</button>
+    </div>
+
+    {% if quick_pairs %}
+    <div class="space-y-2 mb-3">
+      {% for sub in quick_pairs %}
+      <button
+        hx-post="/import/{{ file_id }}/file"
+        hx-target="#card-{{ file_id }}"
+        hx-swap="outerHTML"
+        hx-vals='{"subgroup_id": "{{ sub.id }}"}'
+        class="{{ chip_color(sub.group.name) }} w-full text-left rounded-xl px-3 py-2.5 active:scale-95 transition-transform block">
+        <span class="text-xs opacity-60 block">{{ sub.group.name }}</span>
+        <span class="font-semibold">{% if sub.name != '/' %}{{ sub.name }}{% else %}{{ sub.group.name }}{% endif %}</span>
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div data-groups-area="">
+      <!-- Normal: 2-col grid -->
+      <div data-view="normal">
+        <button onclick="toggleGroupsAZ(this)"
+          class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1 active:opacity-60">
+          Groups
+          <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M7 12h10M11 17h2"/>
+          </svg>
+        </button>
+        <div class="grid grid-cols-2 gap-2">
+          {% for group in groups %}
+          <button type="button"
+            hx-get="/import/{{ file_id }}/pick?group_id={{ group.id }}"
+            hx-target="#card-{{ file_id }}"
+            hx-swap="outerHTML"
+            class="{{ chip_color(group.name) }} rounded-xl px-3 py-2.5 text-sm font-semibold text-left active:scale-95 transition-transform">
+            {{ group.name }}
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      <!-- A-Z: scrollable list -->
+      <div data-view="az" class="hidden">
+        <button onclick="toggleGroupsAZ(this)"
+          class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1 active:opacity-60">
+          A-Z
+          <svg class="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/>
+          </svg>
+        </button>
+        <div class="space-y-1.5 max-h-[50vh] overflow-y-auto">
+          {% for group in groups %}
+          <button type="button"
+            hx-get="/import/{{ file_id }}/pick?group_id={{ group.id }}"
+            hx-target="#card-{{ file_id }}"
+            hx-swap="outerHTML"
+            class="{{ chip_color(group.name) }} w-full text-left rounded-xl px-3 py-2 text-sm font-medium active:scale-95 transition-transform">
+            {{ group.name }}
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

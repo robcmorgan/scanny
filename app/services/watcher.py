@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -22,6 +22,9 @@ ACCEPTED_MIMETYPES = {
 
 # Only process files created after the service started
 _service_start = datetime.now(timezone.utc)
+
+# A pending scan must have been created within this window before the file arrived
+MATCH_WINDOW = timedelta(minutes=10)
 
 
 async def poll_drive():
@@ -59,6 +62,7 @@ async def poll_drive():
                 .options(joinedload(PendingScan.subgroup).joinedload(Subgroup.group))
                 .where(PendingScan.status == "pending")
                 .where(PendingScan.created_at <= file_created)
+                .where(PendingScan.created_at >= file_created - MATCH_WINDOW)
                 .order_by(PendingScan.created_at.desc())
                 .limit(1)
             )
@@ -110,16 +114,22 @@ async def poll_drive():
                     pending.status = "error"
                     await db.commit()
             else:
-                # No matching pending scan — save as untagged for manual filing
-                scan_dt = parse_date_from_filename(drive_file["name"]) or file_created
-                doc = Document(
-                    drive_file_id=drive_file["id"],
-                    file_name_when_imported=drive_file["name"],
-                    timestamp_from_filename=scan_dt,
-                )
-                db.add(doc)
-                await db.commit()
-                logger.info(f"No pending scan for {drive_file['name']} — saved as untagged")
+                # No matching pending scan within window.
+                # If file is recent (still within window), skip — a pending scan may arrive soon.
+                # Once the window has passed with no match, queue it for manual filing.
+                age = datetime.utcnow() - file_created
+                if age > MATCH_WINDOW:
+                    scan_dt = parse_date_from_filename(drive_file["name"]) or file_created
+                    doc = Document(
+                        drive_file_id=drive_file["id"],
+                        file_name_when_imported=drive_file["name"],
+                        timestamp_from_filename=scan_dt,
+                    )
+                    db.add(doc)
+                    await db.commit()
+                    logger.info(f"No match within window for {drive_file['name']} — queued for manual filing")
+                else:
+                    logger.debug(f"No pending scan yet for {drive_file['name']} — will retry")
 
 
 def start_scheduler():

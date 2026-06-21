@@ -1,0 +1,26 @@
+<div class="space-y-2">
+{% for doc in docs %}
+{% set _default = is_default_name(doc, doc.subgroup) %}
+<a href="/document/{{ doc.id }}"
+   class="flex items-center gap-3 bg-white rounded-2xl px-4 py-3 shadow-sm active:scale-95 transition-transform block">
+  <div class="flex-1 min-w-0">
+    {% if doc.group %}
+    <div class="flex items-center gap-1.5 mb-0.5">
+      <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 {{ chip_color(doc.group.name) }}">{{ doc.group.name }}</span>
+      {% if doc.subgroup and doc.subgroup.name != '/' %}
+      <span class="text-[10px] font-semibold rounded-full px-2 py-0.5 {{ chip_color(doc.group.name + '/' + doc.subgroup.name) }}">{{ doc.subgroup.name }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if not _default %}
+    <p class="text-sm font-medium text-gray-900 truncate">{{ doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported }}</p>
+    {% else %}
+    <p class="text-sm text-gray-500 truncate">{{ doc.file_name_when_imported or doc.desired_filename }}</p>
+    {% endif %}
+  </div>
+  {% if doc.timestamp_from_filename %}
+  <span class="text-xs text-gray-400 shrink-0">{{ doc.timestamp_from_filename.strftime('%Y') }}</span>
+  {% endif %}
+</a>
+{% endfor %}
+</div>

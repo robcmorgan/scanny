@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from typing import Optional
 from datetime import datetime, timezone
+import asyncio
 
 from fastapi import FastAPI, Request, Depends, HTTPException, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -11,6 +12,7 @@ from sqlalchemy.orm import joinedload
 
 from database import get_db, init_db, AsyncSessionLocal
 from models import Group, Subgroup, PendingScan, Document
+from config import settings
 from services.drive import get_flow, save_credentials_from_flow, get_credentials, get_drive_service
 from services.watcher import start_scheduler, stop_scheduler
 
@@ -27,30 +29,40 @@ app = FastAPI(lifespan=lifespan, title="Scanny")
 templates = Jinja2Templates(directory="templates")
 
 _CHIP_PALETTE = [
-    "bg-blue-100 text-blue-900",    "bg-orange-200 text-orange-900",
-    "bg-green-300 text-green-900",  "bg-fuchsia-400 text-fuchsia-900",
-    "bg-amber-100 text-amber-900",  "bg-sky-200 text-sky-900",
-    "bg-red-300 text-red-900",      "bg-lime-400 text-lime-900",
-    "bg-violet-100 text-violet-900","bg-yellow-200 text-yellow-900",
-    "bg-teal-300 text-teal-900",    "bg-pink-400 text-pink-900",
-    "bg-blue-200 text-blue-900",    "bg-orange-300 text-orange-900",
-    "bg-green-400 text-green-900",  "bg-fuchsia-100 text-fuchsia-900",
-    "bg-amber-200 text-amber-900",  "bg-sky-300 text-sky-900",
-    "bg-red-400 text-red-900",      "bg-lime-100 text-lime-900",
-    "bg-violet-200 text-violet-900","bg-yellow-300 text-yellow-900",
-    "bg-teal-400 text-teal-900",    "bg-pink-100 text-pink-900",
-    "bg-blue-300 text-blue-900",    "bg-orange-400 text-orange-900",
-    "bg-green-100 text-green-900",  "bg-fuchsia-200 text-fuchsia-900",
-    "bg-amber-300 text-amber-900",  "bg-sky-400 text-sky-900",
-    "bg-red-100 text-red-900",      "bg-lime-200 text-lime-900",
-    "bg-violet-300 text-violet-900","bg-yellow-400 text-yellow-900",
-    "bg-teal-100 text-teal-900",    "bg-pink-200 text-pink-900",
-    "bg-blue-400 text-blue-900",    "bg-orange-100 text-orange-900",
-    "bg-green-200 text-green-900",  "bg-fuchsia-300 text-fuchsia-900",
-    "bg-amber-400 text-amber-900",  "bg-sky-100 text-sky-900",
-    "bg-red-200 text-red-900",      "bg-lime-300 text-lime-900",
-    "bg-violet-400 text-violet-900","bg-yellow-100 text-yellow-900",
-    "bg-teal-200 text-teal-900",    "bg-pink-300 text-pink-900",
+    "bg-blue-100 text-blue-900",     "bg-orange-200 text-orange-900",
+    "bg-green-300 text-green-900",   "bg-fuchsia-400 text-fuchsia-900",
+    "bg-amber-100 text-amber-900",   "bg-sky-200 text-sky-900",
+    "bg-red-300 text-red-900",       "bg-lime-400 text-lime-900",
+    "bg-violet-100 text-violet-900", "bg-yellow-200 text-yellow-900",
+    "bg-teal-300 text-teal-900",     "bg-pink-400 text-pink-900",
+    "bg-rose-100 text-rose-900",     "bg-emerald-200 text-emerald-900",
+    "bg-cyan-300 text-cyan-900",     "bg-indigo-400 text-indigo-900",
+    "bg-purple-100 text-purple-900", "bg-blue-200 text-blue-900",
+    "bg-orange-300 text-orange-900", "bg-green-400 text-green-900",
+    "bg-fuchsia-100 text-fuchsia-900","bg-amber-200 text-amber-900",
+    "bg-sky-300 text-sky-900",       "bg-red-400 text-red-900",
+    "bg-lime-100 text-lime-900",     "bg-violet-200 text-violet-900",
+    "bg-yellow-300 text-yellow-900", "bg-teal-400 text-teal-900",
+    "bg-pink-100 text-pink-900",     "bg-rose-200 text-rose-900",
+    "bg-emerald-300 text-emerald-900","bg-cyan-400 text-cyan-900",
+    "bg-indigo-100 text-indigo-900", "bg-purple-200 text-purple-900",
+    "bg-blue-300 text-blue-900",     "bg-orange-400 text-orange-900",
+    "bg-green-100 text-green-900",   "bg-fuchsia-200 text-fuchsia-900",
+    "bg-amber-300 text-amber-900",   "bg-sky-400 text-sky-900",
+    "bg-red-100 text-red-900",       "bg-lime-200 text-lime-900",
+    "bg-violet-300 text-violet-900", "bg-yellow-400 text-yellow-900",
+    "bg-teal-100 text-teal-900",     "bg-pink-200 text-pink-900",
+    "bg-rose-300 text-rose-900",     "bg-emerald-400 text-emerald-900",
+    "bg-cyan-100 text-cyan-900",     "bg-indigo-200 text-indigo-900",
+    "bg-purple-300 text-purple-900", "bg-blue-400 text-blue-900",
+    "bg-orange-100 text-orange-900", "bg-green-200 text-green-900",
+    "bg-fuchsia-300 text-fuchsia-900","bg-amber-400 text-amber-900",
+    "bg-sky-100 text-sky-900",       "bg-red-200 text-red-900",
+    "bg-lime-300 text-lime-900",     "bg-violet-400 text-violet-900",
+    "bg-yellow-100 text-yellow-900", "bg-teal-200 text-teal-900",
+    "bg-pink-300 text-pink-900",     "bg-rose-400 text-rose-900",
+    "bg-emerald-100 text-emerald-900","bg-cyan-200 text-cyan-900",
+    "bg-indigo-300 text-indigo-900", "bg-purple-400 text-purple-900",
 ]
 
 def _chip_color(key: str) -> str:
@@ -60,6 +72,22 @@ def _chip_color(key: str) -> str:
     return _CHIP_PALETTE[h % len(_CHIP_PALETTE)]
 
 templates.env.globals["chip_color"] = _chip_color
+
+
+def _is_default_name(doc, subgroup=None) -> bool:
+    """True when the document label carries no user-added information."""
+    name = (doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported or "").strip()
+    if not name:
+        return True
+    if "scanned papers" in name.lower():
+        return True
+    if subgroup:
+        tag = (subgroup.filename_tag or subgroup.name or "").strip()
+        if tag and name.lower() == tag.lower():
+            return True
+    return False
+
+templates.env.globals["is_default_name"] = _is_default_name
 
 def _localtime(dt: datetime) -> datetime:
     """Convert a naive UTC datetime (as stored by SQLAlchemy) to local wall-clock time."""
@@ -139,33 +167,79 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
-@app.get("/groups/{group_id}/recent-subgroups", response_class=HTMLResponse)
-async def recent_subgroups(group_id: int, request: Request, db: AsyncSession = Depends(get_db)):
-    group = await db.get(Group, group_id)
-    if not group:
-        raise HTTPException(404)
+@app.get("/search", response_class=HTMLResponse)
+async def search_page(request: Request):
+    return templates.TemplateResponse("search.html", {"request": request})
+
+
+@app.get("/search/results", response_class=HTMLResponse)
+async def search_results(request: Request, q: str = "", db: AsyncSession = Depends(get_db)):
+    if not q.strip():
+        return HTMLResponse('<p class="text-center text-gray-300 text-sm py-8">Start typing to search</p>')
+    from sqlalchemy import or_
+    ql = f"%{q.lower()}%"
     result = await db.execute(
+        select(Document)
+        .options(joinedload(Document.group), joinedload(Document.subgroup))
+        .where(or_(
+            Document.file_name_when_imported.ilike(ql),
+            Document.desired_filename.ilike(ql),
+            Document.assigned_item_one_off_description.ilike(ql),
+            Document.assigned_task_note.ilike(ql),
+            Document.assigned_comment.ilike(ql),
+        ))
+        .order_by(Document.timestamp_from_filename.desc())
+        .limit(30)
+    )
+    docs = result.scalars().all()
+    if not docs:
+        return HTMLResponse('<p class="text-center text-gray-400 text-sm py-8">No results</p>')
+    return templates.TemplateResponse("_search_results.html", {"request": request, "docs": docs})
+
+
+async def _subgroup_popup_ctx(group_id: int, db) -> dict:
+    """Shared context builder for the subgroup popup."""
+    group = await db.get(Group, group_id)
+    recent = await db.execute(
         select(Subgroup)
-        .where(Subgroup.group_id == group_id)
-        .where(Subgroup.name != "/")
+        .where(Subgroup.group_id == group_id, Subgroup.name != "/")
         .order_by(desc(Subgroup.last_used), Subgroup.name)
         .limit(5)
     )
-    subgroups = result.scalars().all()
-    # Fetch the '/' placeholder subgroup so the popup can offer "just this group"
-    slash_result = await db.execute(
+    all_subs = await db.execute(
         select(Subgroup)
-        .where(Subgroup.group_id == group_id)
-        .where(Subgroup.name == "/")
-        .limit(1)
+        .where(Subgroup.group_id == group_id, Subgroup.name != "/")
+        .order_by(Subgroup.name)
     )
-    slash_sub = slash_result.scalar_one_or_none()
-    return templates.TemplateResponse("_subgroup_popup.html", {
-        "request": request,
+    slash = await db.execute(
+        select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name == "/").limit(1)
+    )
+    return {
         "group": group,
-        "subgroups": subgroups,
-        "slash_sub": slash_sub,
-    })
+        "subgroups": recent.scalars().all(),
+        "all_subgroups": all_subs.scalars().all(),
+        "slash_sub": slash.scalar_one_or_none(),
+    }
+
+
+@app.get("/groups/{group_id}/recent-subgroups", response_class=HTMLResponse)
+async def recent_subgroups(group_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    if not await db.get(Group, group_id):
+        raise HTTPException(404)
+    ctx = await _subgroup_popup_ctx(group_id, db)
+    return templates.TemplateResponse("_subgroup_popup.html", {"request": request, **ctx})
+
+
+@app.post("/groups/{group_id}/subgroups-popup", response_class=HTMLResponse)
+async def create_subgroup_popup(
+    group_id: int, request: Request,
+    name: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    db.add(Subgroup(group_id=group_id, name=name.strip()))
+    await db.commit()
+    ctx = await _subgroup_popup_ctx(group_id, db)
+    return templates.TemplateResponse("_subgroup_popup.html", {"request": request, **ctx})
 
 
 @app.get("/pending", response_class=HTMLResponse)
@@ -429,6 +503,31 @@ async def update_subgroup(
 # Library / Tasks / Settings
 # ---------------------------------------------------------------------------
 
+@app.post("/library/groups")
+async def library_create_group(name: str = Form(...), db: AsyncSession = Depends(get_db)):
+    group = Group(name=name.strip(), include_in_path=False)
+    db.add(group)
+    await db.commit()
+    return RedirectResponse("/library", status_code=303)
+
+
+@app.post("/library/{group_id}/subgroups")
+async def library_create_subgroup(
+    group_id: int,
+    name: str = Form(...),
+    filename_tag: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    sub = Subgroup(
+        group_id=group_id,
+        name=name.strip(),
+        filename_tag=filename_tag.strip() or None if filename_tag else None,
+    )
+    db.add(sub)
+    await db.commit()
+    return RedirectResponse(f"/library/{group_id}", status_code=303)
+
+
 @app.get("/library", response_class=HTMLResponse)
 async def library(request: Request, db: AsyncSession = Depends(get_db)):
     from sqlalchemy import func
@@ -440,21 +539,30 @@ async def library(request: Request, db: AsyncSession = Depends(get_db)):
         .order_by(Group.name)
     )
     groups = result.all()
+    broken_count_result = await db.execute(
+        select(func.count(Document.id)).where(Document.broken_link == True)
+    )
+    broken_count = broken_count_result.scalar() or 0
     return templates.TemplateResponse("library.html", {
         "request": request,
         "active": "library",
         "groups": groups,
+        "broken_count": broken_count,
     })
 
 
 @app.get("/library/{group_id}", response_class=HTMLResponse)
 async def library_group(group_id: int, request: Request, db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import func
+    from sqlalchemy import func, case as sa_case
     group = await db.get(Group, group_id)
     if not group:
         raise HTTPException(404)
     result = await db.execute(
-        select(Subgroup, func.count(Document.id).label("doc_count"))
+        select(
+            Subgroup,
+            func.count(Document.id).label("doc_count"),
+            func.sum(sa_case((Document.broken_link == True, 1), else_=0)).label("broken_count"),
+        )
         .outerjoin(Document, Document.subgroup_id == Subgroup.id)
         .where(Subgroup.group_id == group_id)
         .where(Subgroup.name != "/")
@@ -584,10 +692,515 @@ async def document_viewer(document_id: int, request: Request, db: AsyncSession =
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(404)
+    groups_result = await db.execute(select(Group).order_by(Group.name))
+    all_groups = groups_result.scalars().all()
+    pairs_result = await db.execute(
+        select(Subgroup)
+        .options(joinedload(Subgroup.group))
+        .where((Subgroup.last_used.isnot(None)) | (Subgroup.use_count > 0))
+        .order_by(desc(Subgroup.last_used), desc(Subgroup.use_count))
+        .limit(4)
+    )
+    quick_pairs = pairs_result.scalars().all()
     return templates.TemplateResponse("document_viewer.html", {
         "request": request,
         "doc": doc,
+        "all_groups": all_groups,
+        "quick_pairs": quick_pairs,
     })
+
+
+@app.get("/document/{document_id}/move-groups", response_class=HTMLResponse)
+async def document_move_groups(document_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    groups_result = await db.execute(select(Group).order_by(Group.name))
+    all_groups = groups_result.scalars().all()
+    pairs_result = await db.execute(
+        select(Subgroup)
+        .options(joinedload(Subgroup.group))
+        .where((Subgroup.last_used.isnot(None)) | (Subgroup.use_count > 0))
+        .order_by(desc(Subgroup.last_used), desc(Subgroup.use_count))
+        .limit(4)
+    )
+    quick_pairs = pairs_result.scalars().all()
+    return templates.TemplateResponse("_move_groups.html", {
+        "request": request,
+        "document_id": document_id,
+        "all_groups": all_groups,
+        "quick_pairs": quick_pairs,
+    })
+
+
+@app.get("/document/{document_id}/move-subgroups", response_class=HTMLResponse)
+async def document_move_subgroups(
+    document_id: int, group_id: int, request: Request, db: AsyncSession = Depends(get_db)
+):
+    group = await db.get(Group, group_id)
+    if not group:
+        raise HTTPException(404)
+    subs_result = await db.execute(
+        select(Subgroup)
+        .where(Subgroup.group_id == group_id, Subgroup.name != "/")
+        .order_by(Subgroup.name)
+    )
+    subgroups = subs_result.scalars().all()
+    slash_result = await db.execute(
+        select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name == "/").limit(1)
+    )
+    slash_sub = slash_result.scalar_one_or_none()
+    return templates.TemplateResponse("_move_subgroup_list.html", {
+        "request": request,
+        "document_id": document_id,
+        "group": group,
+        "subgroups": subgroups,
+        "slash_sub": slash_sub,
+    })
+
+
+@app.post("/document/{document_id}/recategorize")
+async def recategorize_document(
+    document_id: int,
+    subgroup_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    import asyncio as _asyncio
+    from services.filer import build_filing_info
+    from services.drive import get_or_create_folder, get_drive_service
+    from config import settings as _settings
+
+    result = await db.execute(
+        select(Document)
+        .options(joinedload(Document.subgroup), joinedload(Document.group))
+        .where(Document.id == document_id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(404)
+
+    new_sub = await db.get(Subgroup, subgroup_id)
+    if not new_sub:
+        raise HTTPException(404)
+    new_group = await db.get(Group, new_sub.group_id)
+
+    current_name = doc.desired_filename or doc.file_name_when_imported or ""
+    ext = current_name.rsplit(".", 1)[-1].lower() if "." in current_name else "pdf"
+    scan_dt = doc.timestamp_from_filename or datetime.utcnow()
+
+    # Default filename → rebuild with new tag; custom → preserve stem, change folder
+    is_default = "scanned papers" in current_name.lower()
+    override_filename = None if is_default else (current_name.rsplit(".", 1)[0] if "." in current_name else current_name)
+
+    folder_path, new_filename = build_filing_info(
+        group_name=new_group.name,
+        subgroup_name=new_sub.name,
+        filename_tag=new_sub.filename_tag,
+        custom_path=new_sub.custom_path,
+        include_group_in_path=new_group.include_in_path,
+        scan_datetime=scan_dt,
+        override_filename=override_filename,
+        ext=ext,
+    )
+
+    # Build (or find) the target folder in Drive
+    parent_id = _settings.drive_filed_root_folder_id
+    for part in [p for p in folder_path.strip("/").split("/") if p]:
+        parent_id = await _asyncio.to_thread(get_or_create_folder, parent_id, part)
+
+    # Move and rename the Drive file if one exists
+    if doc.drive_file_id:
+        service = get_drive_service()
+        meta = await _asyncio.to_thread(
+            lambda: service.files().get(fileId=doc.drive_file_id, fields="parents").execute()
+        )
+        old_parents = ",".join(meta.get("parents", []))
+        await _asyncio.to_thread(
+            lambda: service.files().update(
+                fileId=doc.drive_file_id,
+                addParents=parent_id,
+                removeParents=old_parents,
+                body={"name": new_filename},
+                fields="id,name",
+            ).execute()
+        )
+
+    doc.subgroup_id = new_sub.id
+    doc.group_id = new_group.id
+    doc.desired_folder_location = folder_path
+    doc.desired_filename = new_filename
+    doc.desired_full_path = f"{folder_path}/{new_filename}"
+    doc.current_full_path = f"{folder_path}/{new_filename}"
+    doc.broken_link = False
+    await db.commit()
+
+    return RedirectResponse(f"/document/{document_id}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Import from Drive
+# ---------------------------------------------------------------------------
+
+@app.get("/import", response_class=HTMLResponse)
+async def import_page(request: Request, db: AsyncSession = Depends(get_db)):
+    from services.drive import list_files_in_folder
+    drive_authed = bool(get_credentials())
+    files = []
+
+    # IDs of files already properly filed (group assigned) — exclude from Drive listing
+    filed_result = await db.execute(
+        select(Document.drive_file_id).where(
+            Document.drive_file_id.isnot(None),
+            Document.group_id.isnot(None),
+        )
+    )
+    filed_ids = {r for r in filed_result.scalars().all() if r}
+
+    folder_id = settings.drive_import_folder_id or settings.drive_incoming_folder_id
+    if drive_authed and folder_id:
+        try:
+            raw = await asyncio.to_thread(list_files_in_folder, folder_id)
+            accepted = {"application/pdf", "image/jpeg", "image/png", "image/tiff", "image/heic"}
+            raw = [f for f in raw if f.get("mimeType") in accepted]
+            files = [f for f in raw if f["id"] not in filed_ids]
+        except Exception as e:
+            print(f"Import list error: {e}")
+
+    # Also include untagged scanner files (Documents with no group yet)
+    untagged_result = await db.execute(
+        select(Document)
+        .where(Document.group_id.is_(None))
+        .where(Document.drive_file_id.isnot(None))
+        .order_by(Document.timestamp_from_filename.desc())
+    )
+    untagged_ids = set()
+    for doc in untagged_result.scalars().all():
+        if doc.drive_file_id not in {f["id"] for f in files}:
+            files.append({
+                "id": doc.drive_file_id,
+                "name": doc.file_name_when_imported or "",
+                "createdTime": (doc.timestamp_from_filename.isoformat() if doc.timestamp_from_filename else datetime.utcnow().isoformat()),
+                "source": "scanner",
+            })
+        untagged_ids.add(doc.drive_file_id)
+
+    files.sort(key=lambda f: f.get("createdTime") or "", reverse=True)
+
+    return templates.TemplateResponse("import.html", {
+        "request": request,
+        "drive_authed": drive_authed,
+        "files": files,
+    })
+
+
+@app.get("/import/{drive_file_id}", response_class=HTMLResponse)
+async def import_detail_page(drive_file_id: str, request: Request, db: AsyncSession = Depends(get_db)):
+    service = get_drive_service()
+    file = await asyncio.to_thread(
+        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime,mimeType").execute()
+    )
+    groups_result = await db.execute(select(Group).order_by(Group.name))
+    pairs_result = await db.execute(
+        select(Subgroup)
+        .options(joinedload(Subgroup.group))
+        .where((Subgroup.last_used.isnot(None)) | (Subgroup.use_count > 0))
+        .order_by(desc(Subgroup.last_used), desc(Subgroup.use_count))
+        .limit(4)
+    )
+    return templates.TemplateResponse("import_detail.html", {
+        "request": request,
+        "file": file,
+        "file_id": drive_file_id,
+        "groups": groups_result.scalars().all(),
+        "quick_pairs": pairs_result.scalars().all(),
+    })
+
+
+@app.get("/import/{drive_file_id}/detail-groups", response_class=HTMLResponse)
+async def import_detail_groups(
+    drive_file_id: str, request: Request,
+    group_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    pairs_result = await db.execute(
+        select(Subgroup)
+        .options(joinedload(Subgroup.group))
+        .where((Subgroup.last_used.isnot(None)) | (Subgroup.use_count > 0))
+        .order_by(desc(Subgroup.last_used), desc(Subgroup.use_count))
+        .limit(4)
+    )
+    quick_pairs = pairs_result.scalars().all()
+    if group_id:
+        group = await db.get(Group, group_id)
+        if not group:
+            raise HTTPException(404)
+        recent = await db.execute(
+            select(Subgroup)
+            .where(Subgroup.group_id == group_id, Subgroup.name != "/")
+            .order_by(desc(Subgroup.last_used), Subgroup.name)
+            .limit(5)
+        )
+        all_subs = await db.execute(
+            select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name != "/").order_by(Subgroup.name)
+        )
+        slash = await db.execute(
+            select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name == "/").limit(1)
+        )
+        return templates.TemplateResponse("_import_detail_subgroups.html", {
+            "request": request,
+            "file_id": drive_file_id,
+            "group": group,
+            "subgroups": recent.scalars().all(),
+            "all_subgroups": all_subs.scalars().all(),
+            "slash_sub": slash.scalar_one_or_none(),
+        })
+    groups_result = await db.execute(select(Group).order_by(Group.name))
+    return templates.TemplateResponse("_import_detail_groups.html", {
+        "request": request,
+        "file_id": drive_file_id,
+        "groups": groups_result.scalars().all(),
+        "quick_pairs": quick_pairs,
+    })
+
+
+@app.post("/import/{drive_file_id}/create-subgroup", response_class=HTMLResponse)
+async def import_create_subgroup(
+    drive_file_id: str, request: Request,
+    group_id: int = Form(...),
+    name: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    db.add(Subgroup(group_id=group_id, name=name.strip()))
+    await db.commit()
+    group = await db.get(Group, group_id)
+    recent = await db.execute(
+        select(Subgroup)
+        .where(Subgroup.group_id == group_id, Subgroup.name != "/")
+        .order_by(desc(Subgroup.last_used), Subgroup.name)
+        .limit(5)
+    )
+    all_subs = await db.execute(
+        select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name != "/").order_by(Subgroup.name)
+    )
+    slash = await db.execute(
+        select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name == "/").limit(1)
+    )
+    return templates.TemplateResponse("_import_detail_subgroups.html", {
+        "request": request,
+        "file_id": drive_file_id,
+        "group": group,
+        "subgroups": recent.scalars().all(),
+        "all_subgroups": all_subs.scalars().all(),
+        "slash_sub": slash.scalar_one_or_none(),
+    })
+
+
+@app.get("/import/{drive_file_id}/confirm", response_class=HTMLResponse)
+async def import_confirm(
+    drive_file_id: str, request: Request,
+    subgroup_id: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    sub_result = await db.execute(
+        select(Subgroup).options(joinedload(Subgroup.group)).where(Subgroup.id == subgroup_id)
+    )
+    subgroup = sub_result.scalar_one_or_none()
+    if not subgroup:
+        raise HTTPException(404)
+    group = subgroup.group
+    service = get_drive_service()
+    file = await asyncio.to_thread(
+        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime").execute()
+    )
+    subgroup_label = subgroup.name if subgroup.name != "/" else group.name
+    color_key = (group.name + "/" + subgroup.name) if subgroup.name != "/" else group.name
+    from services.filer import parse_date_from_filename as _parse_dt
+    scan_dt = _parse_dt(file["name"]) or datetime.utcnow()
+    return templates.TemplateResponse("_import_detail_confirm.html", {
+        "request": request,
+        "file_id": drive_file_id,
+        "drive_filename": file["name"],
+        "filename_tag": subgroup.filename_tag or "",
+        "subgroup": subgroup,
+        "group": group,
+        "subgroup_label": subgroup_label,
+        "color_key": color_key,
+        "scan_date_str": scan_dt.strftime("%Y-%m-%d"),
+        "scan_time_str": scan_dt.strftime("%H%M%S"),
+    })
+
+
+@app.get("/import/{drive_file_id}/view")
+async def import_view(drive_file_id: str):
+    import httpx
+    try:
+        creds = get_credentials()
+        url = f"https://www.googleapis.com/drive/v3/files/{drive_file_id}?alt=media"
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers={"Authorization": f"Bearer {creds.token}"}, follow_redirects=True)
+        if resp.status_code == 404:
+            raise HTTPException(404)
+        return StreamingResponse(
+            iter([resp.content]),
+            media_type=resp.headers.get("content-type", "application/pdf"),
+            headers={"Cache-Control": "no-store", "Content-Disposition": "inline"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/import/thumbnail/{drive_file_id}")
+async def import_thumbnail(drive_file_id: str):
+    import httpx
+    try:
+        service = get_drive_service()
+        meta = await asyncio.to_thread(
+            lambda: service.files().get(fileId=drive_file_id, fields="thumbnailLink").execute()
+        )
+        thumb_url = meta.get("thumbnailLink")
+        if not thumb_url:
+            raise HTTPException(404)
+        thumb_url = thumb_url.replace("=s220", "=s400")
+        creds = get_credentials()
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(thumb_url, headers={"Authorization": f"Bearer {creds.token}"}, follow_redirects=True)
+        return StreamingResponse(iter([resp.content]), media_type=resp.headers.get("content-type", "image/jpeg"), headers={"Cache-Control": "no-store"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/import/{drive_file_id}/card", response_class=HTMLResponse)
+async def import_card(drive_file_id: str, request: Request):
+    service = get_drive_service()
+    file = await asyncio.to_thread(
+        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime,mimeType").execute()
+    )
+    return templates.TemplateResponse("_import_file_card.html", {"request": request, "file": file})
+
+
+@app.get("/import/{drive_file_id}/pick", response_class=HTMLResponse)
+async def import_pick(
+    drive_file_id: str, request: Request,
+    group_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    pairs_result = await db.execute(
+        select(Subgroup)
+        .options(joinedload(Subgroup.group))
+        .where((Subgroup.last_used.isnot(None)) | (Subgroup.use_count > 0))
+        .order_by(desc(Subgroup.last_used), desc(Subgroup.use_count))
+        .limit(4)
+    )
+    quick_pairs = pairs_result.scalars().all()
+
+    if group_id:
+        group = await db.get(Group, group_id)
+        if not group:
+            raise HTTPException(404)
+        subs_result = await db.execute(
+            select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name != "/").order_by(Subgroup.name)
+        )
+        slash_result = await db.execute(
+            select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name == "/").limit(1)
+        )
+        return templates.TemplateResponse("_import_pick_subgroups.html", {
+            "request": request,
+            "file_id": drive_file_id,
+            "group": group,
+            "subgroups": subs_result.scalars().all(),
+            "slash_sub": slash_result.scalar_one_or_none(),
+        })
+
+    groups_result = await db.execute(select(Group).order_by(Group.name))
+    return templates.TemplateResponse("_import_pick_groups.html", {
+        "request": request,
+        "file_id": drive_file_id,
+        "groups": groups_result.scalars().all(),
+        "quick_pairs": quick_pairs,
+    })
+
+
+@app.post("/import/{drive_file_id}/file", response_class=HTMLResponse)
+async def import_file(
+    drive_file_id: str,
+    request: Request,
+    subgroup_id: int = Form(...),
+    from_detail: Optional[str] = Form(None),
+    override_filename: Optional[str] = Form(None),
+    item_one_off_description: Optional[str] = Form(None),
+    comment: Optional[str] = Form(None),
+    rob_task: Optional[str] = Form(None),
+    beccy_task: Optional[str] = Form(None),
+    task_note: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    from services.filer import parse_date_from_filename, file_document as _file_document
+
+    sub_result = await db.execute(
+        select(Subgroup).options(joinedload(Subgroup.group)).where(Subgroup.id == subgroup_id)
+    )
+    subgroup = sub_result.scalar_one_or_none()
+    if not subgroup:
+        raise HTTPException(404)
+    group = subgroup.group
+
+    service = get_drive_service()
+    drive_file = await asyncio.to_thread(
+        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime,mimeType,parents").execute()
+    )
+    file_created = datetime.fromisoformat(drive_file["createdTime"].replace("Z", "+00:00")).replace(tzinfo=None)
+
+    # Use the file's actual current parent folder (works for both scanner and phone files)
+    source_folder = (drive_file.get("parents") or [settings.drive_import_folder_id or settings.drive_incoming_folder_id])[0]
+    clean_override = override_filename.strip() if override_filename and override_filename.strip() else None
+    clean_one_off = item_one_off_description.strip() if item_one_off_description and item_one_off_description.strip() else None
+    try:
+        folder_path, filename, _ = await asyncio.to_thread(
+            _file_document,
+            drive_file, group.name, subgroup.name,
+            subgroup.filename_tag, subgroup.custom_path,
+            group.include_in_path, None, clean_override or clean_one_off,
+            source_folder,
+        )
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+    scan_dt = parse_date_from_filename(drive_file["name"]) or file_created
+
+    # Update existing untagged Document if present (scanner file queued by watcher)
+    existing_result = await db.execute(
+        select(Document).where(Document.drive_file_id == drive_file_id, Document.group_id.is_(None))
+    )
+    doc = existing_result.scalar_one_or_none()
+    if doc is None:
+        doc = Document(drive_file_id=drive_file_id, file_name_when_imported=drive_file["name"])
+        db.add(doc)
+
+    doc.timestamp_from_filename = scan_dt
+    doc.group_id = group.id
+    doc.subgroup_id = subgroup.id
+    doc.desired_folder_location = folder_path
+    doc.desired_filename = filename
+    doc.desired_full_path = f"{folder_path}/{filename}"
+    doc.current_full_path = f"{folder_path}/{filename}"
+    doc.moved_and_renamed_timestamp = datetime.utcnow()
+    doc.assigned_item_one_off_description = clean_one_off
+    doc.assigned_comment = comment.strip() if comment and comment.strip() else None
+    doc.assigned_rob_task = bool(rob_task)
+    doc.assigned_beccy_task = bool(beccy_task)
+    doc.assigned_task_note = task_note.strip() if task_note and task_note.strip() else None
+    subgroup.use_count += 1
+    subgroup.last_used = datetime.utcnow()
+    await db.commit()
+
+    if from_detail:
+        return RedirectResponse("/import", status_code=303)
+    label = subgroup.name if subgroup.name != "/" else group.name
+    display = f"{group.name} / {label}" if subgroup.name != "/" else group.name
+    return HTMLResponse(
+        f'<div id="card-{drive_file_id}" class="col-span-2 text-center text-sm text-green-600 py-3 bg-white rounded-2xl shadow-sm font-medium">✓ Filed to {display}</div>'
+    )
 
 
 # ---------------------------------------------------------------------------

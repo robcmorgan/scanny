@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% set active = 'import' %}
+{% block title %}{{ file.name }} — Phone{% endblock %}
+{% block content %}
+
+<a href="/import" class="flex items-center gap-1 text-sm text-gray-400 mb-4 active:opacity-60">
+  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+  </svg>
+  Phone
+</a>
+
+<div class="sm:flex sm:gap-6 sm:items-start">
+
+  <!-- Desktop: document viewer sized to one A4 page -->
+  <div class="hidden sm:block sm:flex-1 sticky top-4">
+    <div class="bg-gray-100 rounded-2xl overflow-hidden mx-auto"
+         style="max-height: min(680px, calc(100vh - 160px)); aspect-ratio: 210/297;">
+      <iframe src="/import/{{ file.id }}/view#toolbar=0"
+              class="w-full h-full border-0"
+              style="color-scheme: light"
+              title="{{ file.name }}"></iframe>
+    </div>
+  </div>
+
+  <!-- Right / single column on mobile -->
+  <div class="sm:w-80 sm:shrink-0">
+
+    <!-- Mobile: compact card with thumbnail -->
+    <div data-file-card="" class="bg-white rounded-2xl overflow-hidden shadow-sm mb-5 flex gap-3 p-3 sm:hidden">
+      <a href="/import/{{ file.id }}/view" target="_blank"
+         class="w-16 h-20 rounded-xl overflow-hidden bg-gray-100 shrink-0 block active:opacity-70">
+        <img src="/import/thumbnail/{{ file.id }}"
+             class="w-full h-full object-cover"
+             onerror="this.style.display='none'">
+      </a>
+      <div class="flex-1 min-w-0 flex flex-col justify-center gap-1">
+        <p class="text-sm font-medium text-gray-900 leading-snug break-all">{{ file.name }}</p>
+        <p class="text-xs text-gray-400">{{ file.createdTime[:10] }}</p>
+        <a href="/import/{{ file.id }}/view" target="_blank"
+           class="text-xs text-blue-500 font-medium active:opacity-60">Open ↗</a>
+      </div>
+    </div>
+
+    <!-- Desktop: compact info card (no thumbnail, doc is shown left) -->
+    <div class="hidden sm:block bg-white rounded-2xl p-3 shadow-sm mb-5">
+      <p class="text-sm font-medium text-gray-900 break-all leading-snug mb-0.5">{{ file.name }}</p>
+      <p class="text-xs text-gray-400 mb-2">{{ file.createdTime[:10] }}</p>
+      <a href="/import/{{ file.id }}/view" target="_blank"
+         class="text-xs text-blue-500 font-medium">Open in new tab ↗</a>
+    </div>
+
+    <!-- Picker (single element, always in DOM — HTMX targets here) -->
+    <div id="picker-section">
+      {% include "_import_detail_groups.html" %}
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
