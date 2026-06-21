@@ -11,7 +11,14 @@
 </a>
 
 <div class="flex items-center justify-between mb-4">
-  <p class="text-2xl font-bold text-gray-900">{{ group.name }}</p>
+  <div class="flex items-center gap-2 min-w-0">
+    <p class="text-2xl font-bold text-gray-900 truncate">{{ group.name }}</p>
+    <button onclick="openEditGroupSheet()" class="text-gray-300 active:text-gray-500 shrink-0">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+      </svg>
+    </button>
+  </div>
   <button onclick="openNewSubgroupSheet()"
     class="w-8 h-8 bg-blue-600 active:bg-blue-700 text-white text-xl font-bold rounded-xl flex items-center justify-center shadow-sm shrink-0">+</button>
 </div>
@@ -47,6 +54,29 @@
 <!-- Backdrop -->
 <div id="lib-backdrop" class="hidden fixed inset-0 bg-black/50 z-40" onclick="closeLibSheet()"></div>
 
+<!-- Edit Group sheet -->
+<div id="edit-group-sheet" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-xl mx-auto">
+  <div class="bg-white rounded-t-3xl shadow-2xl px-4 pb-10 pt-3">
+    <div class="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5"></div>
+    <p class="text-lg font-bold text-gray-900 mb-4">Edit Group</p>
+    <form action="/library/{{ group.id }}/update" method="post" class="space-y-3">
+      <input type="text" name="name" id="edit-group-name"
+        value="{{ group.name }}"
+        required autocomplete="off"
+        class="w-full bg-gray-100 rounded-2xl px-4 py-3.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <label class="flex items-center gap-3 px-1">
+        <input type="checkbox" name="include_in_path" value="1" {% if group.include_in_path %}checked{% endif %}
+          class="w-5 h-5 rounded accent-blue-600">
+        <span class="text-sm text-gray-700">Include group name in filename</span>
+      </label>
+      <button type="submit"
+        class="w-full bg-blue-600 active:bg-blue-700 text-white py-4 rounded-2xl text-base font-bold shadow-sm">
+        Save
+      </button>
+    </form>
+  </div>
+</div>
+
 <!-- New Subgroup sheet -->
 <div id="new-subgroup-sheet" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-xl mx-auto">
   <div class="bg-white rounded-t-3xl shadow-2xl px-4 pb-10 pt-3">
@@ -76,9 +106,15 @@ function openNewSubgroupSheet() {
   document.getElementById('new-subgroup-sheet').classList.remove('hidden');
   setTimeout(function() { document.getElementById('new-sub-name').focus(); }, 50);
 }
+function openEditGroupSheet() {
+  document.getElementById('lib-backdrop').classList.remove('hidden');
+  document.getElementById('edit-group-sheet').classList.remove('hidden');
+  setTimeout(function() { document.getElementById('edit-group-name').focus(); }, 50);
+}
 function closeLibSheet() {
   document.getElementById('lib-backdrop').classList.add('hidden');
   document.getElementById('new-subgroup-sheet').classList.add('hidden');
+  document.getElementById('edit-group-sheet').classList.add('hidden');
 }
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeLibSheet();

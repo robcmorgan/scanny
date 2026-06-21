@@ -528,6 +528,39 @@ async def library_create_subgroup(
     return RedirectResponse(f"/library/{group_id}", status_code=303)
 
 
+@app.post("/library/{group_id}/update")
+async def library_update_group(
+    group_id: int,
+    name: str = Form(...),
+    include_in_path: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    g = await db.get(Group, group_id)
+    if not g:
+        raise HTTPException(404)
+    g.name = name.strip()
+    g.include_in_path = bool(include_in_path)
+    await db.commit()
+    return RedirectResponse(f"/library/{group_id}", status_code=303)
+
+
+@app.post("/library/{group_id}/{sub_id}/update")
+async def library_update_subgroup(
+    group_id: int,
+    sub_id: int,
+    name: str = Form(...),
+    filename_tag: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    s = await db.get(Subgroup, sub_id)
+    if not s:
+        raise HTTPException(404)
+    s.name = name.strip()
+    s.filename_tag = filename_tag.strip() or None if filename_tag else None
+    await db.commit()
+    return RedirectResponse(f"/library/{group_id}/{sub_id}", status_code=303)
+
+
 @app.get("/library", response_class=HTMLResponse)
 async def library(request: Request, db: AsyncSession = Depends(get_db)):
     from sqlalchemy import func

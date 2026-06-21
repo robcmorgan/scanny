@@ -9,7 +9,14 @@
   </svg>
   {{ group.name }}
 </a>
-<p class="text-2xl font-bold text-gray-900 mb-4">{{ subgroup.name }}</p>
+<div class="flex items-center gap-2 mb-4">
+  <p class="text-2xl font-bold text-gray-900 truncate">{% if subgroup.name == '/' %}{{ group.name }}{% else %}{{ subgroup.name }}{% endif %}</p>
+  <button onclick="openEditSubgroupSheet()" class="text-gray-300 active:text-gray-500 shrink-0">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+    </svg>
+  </button>
+</div>
 
 {% if documents %}
 <div class="grid grid-cols-2 gap-3">
@@ -61,5 +68,48 @@
 {% else %}
 <p class="text-gray-400 text-sm text-center py-8">No documents yet</p>
 {% endif %}
+
+<!-- Backdrop -->
+<div id="lib-backdrop" class="hidden fixed inset-0 bg-black/50 z-40" onclick="closeEditSheet()"></div>
+
+<!-- Edit Subgroup sheet -->
+<div id="edit-subgroup-sheet" class="hidden fixed bottom-0 left-0 right-0 z-50 max-w-xl mx-auto">
+  <div class="bg-white rounded-t-3xl shadow-2xl px-4 pb-10 pt-3">
+    <div class="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5"></div>
+    <p class="text-lg font-bold text-gray-900 mb-1">Edit Subgroup</p>
+    <p class="text-sm text-gray-400 mb-4">{{ group.name }}</p>
+    <form action="/library/{{ group.id }}/{{ subgroup.id }}/update" method="post" class="space-y-3">
+      <input type="text" name="name" id="edit-sub-name"
+        value="{{ subgroup.name }}"
+        required autocomplete="off"
+        class="w-full bg-gray-100 rounded-2xl px-4 py-3.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400"
+        placeholder="Subgroup name">
+      <input type="text" name="filename_tag"
+        value="{{ subgroup.filename_tag or '' }}"
+        autocomplete="off"
+        class="w-full bg-gray-100 rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        placeholder="Filename tag (optional)">
+      <button type="submit"
+        class="w-full bg-blue-600 active:bg-blue-700 text-white py-4 rounded-2xl text-base font-bold shadow-sm">
+        Save
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEditSubgroupSheet() {
+  document.getElementById('lib-backdrop').classList.remove('hidden');
+  document.getElementById('edit-subgroup-sheet').classList.remove('hidden');
+  setTimeout(function() { document.getElementById('edit-sub-name').focus(); }, 50);
+}
+function closeEditSheet() {
+  document.getElementById('lib-backdrop').classList.add('hidden');
+  document.getElementById('edit-subgroup-sheet').classList.add('hidden');
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeEditSheet();
+});
+</script>
 
 {% endblock %}
