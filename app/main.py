@@ -1382,7 +1382,7 @@ async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
                         if f["mimeType"] == "application/vnd.google-apps.folder":
                             queue.append(f["id"])
                         else:
-                            files_by_name.setdefault(f["name"].lower(), []).append(f["id"])
+                            files_by_name.setdefault(f["name"].strip().lower(), []).append(f["id"])
                     page_token = resp.get("nextPageToken")
                     if not page_token:
                         break
