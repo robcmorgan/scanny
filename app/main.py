@@ -1352,17 +1352,40 @@ async def import_file(
     )
 
 
-@app.post("/import/{drive_file_id}/delete-from-drive")
-async def import_delete_from_drive(drive_file_id: str, db: AsyncSession = Depends(get_db)):
+async def _trash_or_move_to_can_delete(service, drive_file_id: str):
+    """Trash a Drive file. If not owner (403), move it to a root-level 'can delete' folder instead."""
     from googleapiclient.errors import HttpError as _HttpError
-    service = get_drive_service()
+    from services.drive import get_or_create_folder
     try:
         await asyncio.to_thread(lambda: service.files().update(fileId=drive_file_id, body={"trashed": True}).execute())
     except _HttpError as e:
-        if e.resp.status not in (403, 404):
+        if e.resp.status == 404:
+            return  # already gone
+        if e.resp.status == 403:
+            # Not owner — move to 'can delete' at My Drive root instead
+            file_meta = await asyncio.to_thread(
+                lambda: service.files().get(fileId=drive_file_id, fields="parents").execute()
+            )
+            root_id = (await asyncio.to_thread(
+                lambda: service.files().get(fileId="root", fields="id").execute()
+            ))["id"]
+            can_delete_id = await asyncio.to_thread(get_or_create_folder, root_id, "can delete")
+            old_parents = ",".join(file_meta.get("parents", []))
+            await asyncio.to_thread(lambda: service.files().update(
+                fileId=drive_file_id,
+                addParents=can_delete_id,
+                removeParents=old_parents,
+                body={},
+                fields="id",
+            ).execute())
+        else:
             raise HTTPException(502, f"Drive error: {e}")
-        # 403 = not owner; 404 = already gone — either way, clean up locally
-    # Remove any untagged queue record (scanner/watcher entry)
+
+
+@app.post("/import/{drive_file_id}/delete-from-drive")
+async def import_delete_from_drive(drive_file_id: str, db: AsyncSession = Depends(get_db)):
+    service = get_drive_service()
+    await _trash_or_move_to_can_delete(service, drive_file_id)
     queued = (await db.execute(
         select(Document).where(Document.drive_file_id == drive_file_id, Document.group_id.is_(None))
     )).scalar_one_or_none()
@@ -1374,18 +1397,13 @@ async def import_delete_from_drive(drive_file_id: str, db: AsyncSession = Depend
 
 @app.post("/document/{document_id}/delete-from-drive")
 async def document_delete_from_drive(document_id: int, db: AsyncSession = Depends(get_db)):
-    from googleapiclient.errors import HttpError as _HttpError
     doc = await db.get(Document, document_id)
     if not doc:
         raise HTTPException(404)
     back_url = f"/library/{doc.group_id}/{doc.subgroup_id}" if doc.subgroup_id else f"/library/{doc.group_id}" if doc.group_id else "/library"
     if doc.drive_file_id:
         service = get_drive_service()
-        try:
-            await asyncio.to_thread(lambda: service.files().update(fileId=doc.drive_file_id, body={"trashed": True}).execute())
-        except _HttpError as e:
-            if e.resp.status not in (403, 404):
-                raise HTTPException(502, f"Drive error: {e}")
+        await _trash_or_move_to_can_delete(service, doc.drive_file_id)
     await db.delete(doc)
     await db.commit()
     return RedirectResponse(back_url, status_code=303)
