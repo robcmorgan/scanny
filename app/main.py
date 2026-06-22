@@ -1310,9 +1310,9 @@ async def import_file(
 
     scan_dt = parse_date_from_filename(drive_file["name"]) or file_created
 
-    # Update existing untagged Document if present (scanner file queued by watcher)
+    # Update existing Document if present (scanner file queued by watcher, or re-filing a phone import)
     existing_result = await db.execute(
-        select(Document).where(Document.drive_file_id == drive_file_id, Document.group_id.is_(None))
+        select(Document).where(Document.drive_file_id == drive_file_id)
     )
     doc = existing_result.scalar_one_or_none()
     if doc is None:
