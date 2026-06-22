@@ -12,6 +12,17 @@ _DATE_PATTERNS = [
 ]
 
 
+def extract_drive_prefix(filename: str) -> str:
+    """Extract human prefix from Google Drive auto-named scan files.
+
+    'Cheese Flyer Scanned_20260622-1305.pdf' → 'Cheese Flyer'
+    'Scanned_20260622-1305.pdf'              → ''
+    """
+    stem = filename.rsplit(".", 1)[0]
+    m = re.match(r'^(.+?)\s+Scanned_\d{8}', stem, re.IGNORECASE)
+    return m.group(1).strip() if m else ""
+
+
 def parse_date_from_filename(filename: str) -> Optional[datetime]:
     base = filename.rsplit(".", 1)[0]
     for pattern in _DATE_PATTERNS:

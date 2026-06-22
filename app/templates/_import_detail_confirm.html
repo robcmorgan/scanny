@@ -33,10 +33,19 @@
 
   <div class="space-y-3">
 
-    <input type="text" name="item_one_off_description" id="import-one-off"
-      oninput="importSyncOneOff()"
-      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-      placeholder="One-off description (optional)">
+    <div>
+      <input type="text" name="item_one_off_description" id="import-one-off"
+        value="{{ filename_prefix }}"
+        oninput="importSyncOneOff()"
+        class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+        placeholder="One-off description (optional)">
+      {% if scan_date_str %}
+      <label class="flex items-center gap-2 mt-1.5 px-1 cursor-pointer select-none">
+        <input type="checkbox" id="import-date-chk" class="w-4 h-4 accent-blue-500">
+        <span class="text-xs text-gray-500">Add date to filename</span>
+      </label>
+      {% endif %}
+    </div>
 
     <textarea name="comment" rows="2"
       class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
@@ -68,6 +77,15 @@
       placeholder="Filename override (optional)">
 
   </div>
+</form>
+
+<!-- Delete from Drive -->
+<form action="/import/{{ file_id }}/delete-from-drive" method="post" class="mt-4"
+      onsubmit="return confirm('Move this file to Drive trash?')">
+  <button type="submit"
+    class="w-full bg-white text-red-500 border border-red-100 rounded-2xl py-3 text-sm font-medium active:bg-red-50 shadow-sm">
+    Delete from Drive
+  </button>
 </form>
 
 <script>
@@ -105,6 +123,8 @@
   };
 
   importUpdatePreview();
+  datePrefix('import-date-chk', 'import-one-off', scanDate);
+  if (document.getElementById('import-one-off').value) importSyncOneOff();
   setTimeout(function() {
     var inp = document.getElementById('import-one-off');
     if (inp) inp.focus();

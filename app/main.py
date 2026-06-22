@@ -817,11 +817,16 @@ async def document_viewer(document_id: int, request: Request, db: AsyncSession =
         .limit(4)
     )
     quick_pairs = pairs_result.scalars().all()
+    from services.filer import extract_drive_prefix as _pfx
+    filename_prefix = _pfx(doc.file_name_when_imported or "") if not doc.assigned_item_one_off_description else ""
+    scan_date_str = doc.timestamp_from_filename.strftime("%Y-%m-%d") if doc.timestamp_from_filename else ""
     return templates.TemplateResponse("document_viewer.html", {
         "request": request,
         "doc": doc,
         "all_groups": all_groups,
         "quick_pairs": quick_pairs,
+        "filename_prefix": filename_prefix,
+        "scan_date_str": scan_date_str,
     })
 
 
@@ -1118,12 +1123,13 @@ async def import_create_subgroup(
     )
     subgroup_label = new_sub.name if new_sub.name != "/" else group.name
     color_key = (group.name + "/" + new_sub.name) if new_sub.name != "/" else group.name
-    from services.filer import parse_date_from_filename as _parse_dt
+    from services.filer import parse_date_from_filename as _parse_dt, extract_drive_prefix as _pfx
     scan_dt = _parse_dt(file["name"]) or datetime.utcnow()
     return templates.TemplateResponse("_import_detail_confirm.html", {
         "request": request,
         "file_id": drive_file_id,
         "drive_filename": file["name"],
+        "filename_prefix": _pfx(file["name"]),
         "filename_tag": new_sub.filename_tag or "",
         "subgroup": new_sub,
         "group": group,
@@ -1153,12 +1159,13 @@ async def import_confirm(
     )
     subgroup_label = subgroup.name if subgroup.name != "/" else group.name
     color_key = (group.name + "/" + subgroup.name) if subgroup.name != "/" else group.name
-    from services.filer import parse_date_from_filename as _parse_dt
+    from services.filer import parse_date_from_filename as _parse_dt, extract_drive_prefix as _pfx
     scan_dt = _parse_dt(file["name"]) or datetime.utcnow()
     return templates.TemplateResponse("_import_detail_confirm.html", {
         "request": request,
         "file_id": drive_file_id,
         "drive_filename": file["name"],
+        "filename_prefix": _pfx(file["name"]),
         "filename_tag": subgroup.filename_tag or "",
         "subgroup": subgroup,
         "group": group,
@@ -1343,6 +1350,34 @@ async def import_file(
     return HTMLResponse(
         f'<div id="card-{drive_file_id}" class="col-span-2 text-center text-sm text-green-600 py-3 bg-white rounded-2xl shadow-sm font-medium">✓ Filed to {display}</div>'
     )
+
+
+@app.post("/import/{drive_file_id}/delete-from-drive")
+async def import_delete_from_drive(drive_file_id: str, db: AsyncSession = Depends(get_db)):
+    service = get_drive_service()
+    await asyncio.to_thread(lambda: service.files().trash(fileId=drive_file_id).execute())
+    # Remove any untagged queue record (scanner/watcher entry)
+    queued = (await db.execute(
+        select(Document).where(Document.drive_file_id == drive_file_id, Document.group_id.is_(None))
+    )).scalar_one_or_none()
+    if queued:
+        await db.delete(queued)
+    await db.commit()
+    return RedirectResponse("/import", status_code=303)
+
+
+@app.post("/document/{document_id}/delete-from-drive")
+async def document_delete_from_drive(document_id: int, db: AsyncSession = Depends(get_db)):
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404)
+    back_url = f"/library/{doc.group_id}/{doc.subgroup_id}" if doc.subgroup_id else f"/library/{doc.group_id}" if doc.group_id else "/library"
+    if doc.drive_file_id:
+        service = get_drive_service()
+        await asyncio.to_thread(lambda: service.files().trash(fileId=doc.drive_file_id).execute())
+    await db.delete(doc)
+    await db.commit()
+    return RedirectResponse(back_url, status_code=303)
 
 
 # ---------------------------------------------------------------------------
