@@ -554,6 +554,7 @@ async def library_update_subgroup(
     sub_id: int,
     name: str = Form(...),
     filename_tag: Optional[str] = Form(None),
+    custom_path: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     s = await db.get(Subgroup, sub_id)
@@ -561,8 +562,75 @@ async def library_update_subgroup(
         raise HTTPException(404)
     s.name = name.strip()
     s.filename_tag = filename_tag.strip() or None if filename_tag else None
+    s.custom_path = custom_path.strip() or None if custom_path else None
     await db.commit()
     return RedirectResponse(f"/library/{group_id}/{sub_id}", status_code=303)
+
+
+@app.get("/library/{group_id}/edit", response_class=HTMLResponse)
+async def edit_group_page(group_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    g = await db.get(Group, group_id)
+    if not g:
+        raise HTTPException(404)
+    from sqlalchemy import func
+    doc_count = (await db.execute(
+        select(func.count(Document.id))
+        .join(Subgroup, Subgroup.id == Document.subgroup_id)
+        .where(Subgroup.group_id == group_id)
+    )).scalar_one()
+    sub_count = (await db.execute(
+        select(func.count(Subgroup.id)).where(Subgroup.group_id == group_id, Subgroup.name != "/")
+    )).scalar_one()
+    return templates.TemplateResponse("edit_group.html", {
+        "request": request, "group": g,
+        "doc_count": doc_count, "sub_count": sub_count,
+    })
+
+
+@app.post("/library/{group_id}/delete")
+async def library_delete_group(group_id: int, db: AsyncSession = Depends(get_db)):
+    g = await db.get(Group, group_id)
+    if not g:
+        raise HTTPException(404)
+    real_subs = (await db.execute(
+        select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name != "/")
+    )).scalars().first()
+    if real_subs:
+        raise HTTPException(409, "Remove all subgroups before deleting a group")
+    placeholders = (await db.execute(select(Subgroup).where(Subgroup.group_id == group_id))).scalars().all()
+    for s in placeholders:
+        await db.delete(s)
+    await db.delete(g)
+    await db.commit()
+    return RedirectResponse("/library", status_code=303)
+
+
+@app.get("/library/{group_id}/{subgroup_id}/edit", response_class=HTMLResponse)
+async def edit_subgroup_page(group_id: int, subgroup_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    s = await db.get(Subgroup, subgroup_id)
+    g = await db.get(Group, group_id)
+    if not s or not g:
+        raise HTTPException(404)
+    from sqlalchemy import func
+    doc_count = (await db.execute(
+        select(func.count(Document.id)).where(Document.subgroup_id == subgroup_id)
+    )).scalar_one()
+    return templates.TemplateResponse("edit_subgroup.html", {
+        "request": request, "subgroup": s, "group": g, "doc_count": doc_count,
+    })
+
+
+@app.post("/library/{group_id}/{subgroup_id}/delete")
+async def library_delete_subgroup(group_id: int, subgroup_id: int, db: AsyncSession = Depends(get_db)):
+    s = await db.get(Subgroup, subgroup_id)
+    if not s:
+        raise HTTPException(404)
+    docs = (await db.execute(select(Document).where(Document.subgroup_id == subgroup_id).limit(1))).scalar_one_or_none()
+    if docs:
+        raise HTTPException(409, "Subgroup has documents — reassign them first")
+    await db.delete(s)
+    await db.commit()
+    return RedirectResponse(f"/library/{group_id}", status_code=303)
 
 
 @app.get("/library", response_class=HTMLResponse)

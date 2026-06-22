@@ -26,25 +26,49 @@
 <div class="space-y-2">
   {% if slash_sub %}
   {% set sub, count = slash_sub %}
-  <a href="/library/{{ group.id }}/{{ sub.id }}"
-    class="inline-flex w-2/3 items-center justify-between {{ chip_color(group.name) }} rounded-2xl px-4 py-3.5 shadow-sm ring-2 ring-inset ring-black/25 active:scale-95 transition-transform">
-    <span class="font-medium">{{ group.name }}</span>
-    <span class="text-xs opacity-50">{{ count }}</span>
-  </a>
+  <div class="relative w-2/3" data-holdable style="-webkit-touch-callout:none;-webkit-user-select:none;user-select:none">
+    <a href="/library/{{ group.id }}/{{ sub.id }}" data-nav
+      class="flex items-center justify-between {{ chip_color(group.name) }} rounded-2xl px-4 py-3.5 shadow-sm ring-2 ring-black/35 active:scale-95 transition-transform">
+      <span class="font-medium">{{ group.name }}</span>
+      <span class="text-xs opacity-50">{{ count }}</span>
+    </a>
+    <div data-edit-overlay
+         class="absolute inset-0 rounded-2xl flex items-center justify-end px-3 pointer-events-none"
+         style="opacity:0;background:rgba(0,0,0,0.18);transition:opacity 0.15s">
+      <a href="/library/{{ group.id }}/{{ sub.id }}/edit"
+         class="pointer-events-auto bg-white/95 rounded-xl w-10 h-10 flex items-center justify-center shadow active:bg-gray-50">
+        <svg class="w-4 h-4 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+        </svg>
+      </a>
+    </div>
+  </div>
   {% endif %}
   {% for subgroup, doc_count, broken_count in subgroups %}
-  <a href="/library/{{ group.id }}/{{ subgroup.id }}"
-    class="flex items-center justify-between {{ chip_color(group.name + '/' + subgroup.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform">
-    <span class="font-semibold">{{ subgroup.name }}</span>
-    <div class="flex items-center gap-1.5">
-      {% if broken_count %}
-      <svg class="w-3.5 h-3.5 text-red-500 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
-      </svg>
-      {% endif %}
-      <span class="text-xs opacity-50">{{ doc_count }}</span>
+  <div class="relative" data-holdable style="-webkit-touch-callout:none;-webkit-user-select:none;user-select:none">
+    <a href="/library/{{ group.id }}/{{ subgroup.id }}" data-nav
+      class="flex items-center justify-between {{ chip_color(group.name + '/' + subgroup.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform">
+      <span class="font-semibold">{{ subgroup.name }}</span>
+      <div class="flex items-center gap-1.5">
+        {% if broken_count %}
+        <svg class="w-3.5 h-3.5 text-red-500 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+        </svg>
+        {% endif %}
+        <span class="text-xs opacity-50">{{ doc_count }}</span>
+      </div>
+    </a>
+    <div data-edit-overlay
+         class="absolute inset-0 rounded-2xl flex items-center justify-end px-3 pointer-events-none"
+         style="opacity:0;background:rgba(0,0,0,0.18);transition:opacity 0.15s">
+      <a href="/library/{{ group.id }}/{{ subgroup.id }}/edit"
+         class="pointer-events-auto bg-white/95 rounded-xl w-10 h-10 flex items-center justify-center shadow active:bg-gray-50">
+        <svg class="w-4 h-4 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+        </svg>
+      </a>
     </div>
-  </a>
+  </div>
   {% endfor %}
   {% if not subgroups and not slash_sub %}
   <p class="text-gray-400 text-sm text-center py-8">No subgroups yet</p>
