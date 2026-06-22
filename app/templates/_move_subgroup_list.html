@@ -10,21 +10,19 @@
     Groups
   </button>
   <p class="text-sm font-semibold text-gray-700 flex-1">{{ group.name }}</p>
-  <button onclick="document.getElementById('move-modal').classList.add('hidden')"
-    class="text-gray-400 text-2xl leading-none w-8 h-8 flex items-center justify-center">&times;</button>
 </div>
 
 {% if slash_sub %}
-<button
-  onclick="document.getElementById('move-subgroup-id').value='{{ slash_sub.id }}';document.getElementById('move-form').submit()"
+<button data-move-chip
+  onclick="selectMoveTarget(this, '{{ slash_sub.id }}')"
   class="{{ chip_color(group.name) }} w-2/3 text-left font-medium ring-2 ring-inset ring-black/25 rounded-2xl px-4 py-2.5 mb-2 active:scale-95 transition-transform block">
   {{ group.name }}
 </button>
 {% endif %}
 <div class="space-y-2 pb-4">
 {% for sub in subgroups %}
-<button
-  onclick="document.getElementById('move-subgroup-id').value='{{ sub.id }}';document.getElementById('move-form').submit()"
+<button data-move-chip
+  onclick="selectMoveTarget(this, '{{ sub.id }}')"
   class="{{ chip_color(group.name + '/' + sub.name) }} w-full text-left font-semibold rounded-2xl px-4 py-3.5 active:scale-95 transition-transform block">
   {{ sub.name }}
 </button>

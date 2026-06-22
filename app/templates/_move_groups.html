@@ -1,14 +1,8 @@
-<div class="flex items-center justify-between mb-4">
-  <p class="text-sm font-semibold text-gray-700">Move to…</p>
-  <button onclick="document.getElementById('move-modal').classList.add('hidden')"
-    class="text-gray-400 text-2xl leading-none w-8 h-8 flex items-center justify-center">&times;</button>
-</div>
-
 {% if quick_pairs %}
 <div class="space-y-2 mb-4">
   {% for sub in quick_pairs %}
-  <button
-    onclick="document.getElementById('move-subgroup-id').value='{{ sub.id }}';document.getElementById('move-form').submit()"
+  <button data-move-chip
+    onclick="selectMoveTarget(this, '{{ sub.id }}')"
     class="{{ chip_color(sub.group.name) }} w-full text-left rounded-2xl px-4 py-3 active:scale-95 transition-transform block">
     <span class="text-xs opacity-60 block">{{ sub.group.name }}</span>
     <span class="font-semibold">{% if sub.name != '/' %}{{ sub.name }}{% else %}{{ sub.group.name }}{% endif %}</span>
