@@ -1460,6 +1460,127 @@ async def relink_status(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
+# ---------------------------------------------------------------------------
+# Path-scan: find broken docs at their desired_full_path in Drive
+# ---------------------------------------------------------------------------
+
+_path_scan_state: dict = {"running": False, "total": 0, "checked": 0, "linked": 0, "error": None}
+
+
+def _dq(s: str) -> str:
+    """Escape single quotes for Drive API query strings."""
+    return s.replace("\\", "\\\\").replace("'", "\\'")
+
+
+async def _run_path_scan() -> None:
+    import asyncio as _asyncio
+    from config import settings as _settings
+
+    _path_scan_state.update({"running": True, "total": 0, "checked": 0, "linked": 0, "error": None})
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Document).where(
+                    Document.broken_link == True,
+                    Document.desired_full_path.isnot(None),
+                )
+            )
+            docs = result.scalars().all()
+            _path_scan_state["total"] = len(docs)
+
+            used_result = await db.execute(
+                select(Document.drive_file_id).where(Document.drive_file_id.isnot(None))
+            )
+            already_used: set = {r[0] for r in used_result}
+
+            service = get_drive_service()
+            folder_cache: dict = {}
+
+            for doc in docs:
+                path = doc.desired_full_path
+                for marker in ("My Drive/", "My drive/"):
+                    if marker in path:
+                        path = "/" + path.split(marker, 1)[1]
+                        break
+
+                parts = [p for p in path.strip("/").split("/") if p]
+                if len(parts) < 2:
+                    _path_scan_state["checked"] += 1
+                    continue
+
+                folder_parts, filename = parts[:-1], parts[-1]
+                folder_key = "/".join(folder_parts)
+
+                if folder_key not in folder_cache:
+                    current_id = _settings.drive_filed_root_folder_id
+                    ok = True
+                    for part in folder_parts:
+                        req = service.files().list(
+                            q=f"name = '{_dq(part)}' and '{current_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                            fields="files(id)", pageSize=1,
+                        )
+                        resp = await _asyncio.to_thread(req.execute)
+                        hits = resp.get("files", [])
+                        if not hits:
+                            ok = False
+                            break
+                        current_id = hits[0]["id"]
+                    folder_cache[folder_key] = current_id if ok else None
+
+                folder_id = folder_cache.get(folder_key)
+                if folder_id:
+                    req = service.files().list(
+                        q=f"name = '{_dq(filename)}' and '{folder_id}' in parents and trashed = false",
+                        fields="files(id)", pageSize=1,
+                    )
+                    resp = await _asyncio.to_thread(req.execute)
+                    hits = resp.get("files", [])
+                    if hits and hits[0]["id"] not in already_used:
+                        fid = hits[0]["id"]
+                        doc.drive_file_id = fid
+                        doc.broken_link = False
+                        already_used.add(fid)
+                        _path_scan_state["linked"] += 1
+
+                _path_scan_state["checked"] += 1
+
+            await db.commit()
+    except Exception as e:
+        _path_scan_state["error"] = str(e)
+    finally:
+        _path_scan_state["running"] = False
+
+
+@app.post("/tasks/path-scan", response_class=HTMLResponse)
+async def start_path_scan(request: Request, background_tasks: BackgroundTasks):
+    if not get_credentials():
+        return HTMLResponse('<p class="text-red-500 text-sm text-center py-4">Drive not connected.</p>')
+    if not _path_scan_state["running"]:
+        background_tasks.add_task(_run_path_scan)
+    return templates.TemplateResponse("_path_scan.html", {"request": request, "path_scan_state": _path_scan_state})
+
+
+@app.get("/tasks/path-scan/status", response_class=HTMLResponse)
+async def path_scan_status(request: Request, db: AsyncSession = Depends(get_db)):
+    broken: list = []
+    refresh = not _path_scan_state["running"] and bool(_path_scan_state.get("checked"))
+    if refresh and not _link_scan["running"]:
+        result = await db.execute(
+            select(Document)
+            .options(joinedload(Document.group), joinedload(Document.subgroup))
+            .where(Document.broken_link == True)
+            .order_by(desc(Document.time_file_was_imported))
+        )
+        broken = result.scalars().all()
+    return templates.TemplateResponse("_path_scan.html", {
+        "request": request,
+        "path_scan_state": _path_scan_state,
+        "refresh_broken": refresh,
+        "broken_links": broken,
+        "scan_state": _link_scan,
+    })
+
+
 @app.get("/tasks", response_class=HTMLResponse)
 async def tasks(request: Request, db: AsyncSession = Depends(get_db)):
     broken: list = []
@@ -1477,6 +1598,7 @@ async def tasks(request: Request, db: AsyncSession = Depends(get_db)):
         "broken_links": broken,
         "scan_state": _link_scan,
         "relink_state": _relink_state,
+        "path_scan_state": _path_scan_state,
     })
 
 

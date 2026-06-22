@@ -1,0 +1,46 @@
+{% if path_scan_state.running %}
+
+<div hx-get="/tasks/path-scan/status"
+     hx-trigger="every 2s"
+     hx-target="#path-scan-section"
+     hx-swap="innerHTML"
+     class="text-center py-6">
+  <div class="w-6 h-6 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin mx-auto mb-3"></div>
+  <p class="text-sm text-gray-500">
+    {% if path_scan_state.total %}
+    Checked {{ path_scan_state.checked }} / {{ path_scan_state.total }} &middot; linked {{ path_scan_state.linked }}
+    {% else %}Scanning Drive&hellip;{% endif %}
+  </p>
+</div>
+
+{% else %}
+
+{% if path_scan_state.error %}
+<div class="bg-red-50 border border-red-100 rounded-2xl px-4 py-3 mb-3">
+  <p class="text-sm text-red-600">{{ path_scan_state.error }}</p>
+</div>
+{% elif path_scan_state.checked %}
+<div class="bg-white border border-gray-100 rounded-2xl px-4 py-3 mb-3 shadow-sm">
+  <p class="text-sm text-gray-700">
+    Linked <strong>{{ path_scan_state.linked }}</strong> of {{ path_scan_state.total }} documents.
+    {% if path_scan_state.total - path_scan_state.linked %}<span class="text-gray-400">{{ path_scan_state.total - path_scan_state.linked }} not found at path.</span>{% endif %}
+  </p>
+</div>
+{% endif %}
+
+<p class="text-xs text-gray-400 px-1 mb-2">Checks every broken document's stored path in Drive and re-links any that are found there.</p>
+<button
+  hx-post="/tasks/path-scan"
+  hx-target="#path-scan-section"
+  hx-swap="innerHTML"
+  class="w-full bg-blue-500 text-white rounded-2xl px-4 py-2.5 text-sm font-medium active:bg-blue-600 transition-colors shadow-sm">
+  Scan by path
+</button>
+
+{% endif %}
+
+{% if refresh_broken is defined and refresh_broken %}
+<div id="broken-links-section" hx-swap-oob="innerHTML">
+  {% include "_broken_links.html" %}
+</div>
+{% endif %}
