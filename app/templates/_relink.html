@@ -41,3 +41,9 @@
 </form>
 
 {% endif %}
+
+{% if refresh_broken is defined and refresh_broken %}
+<div id="broken-links-section" hx-swap-oob="innerHTML">
+  {% include "_broken_links.html" %}
+</div>
+{% endif %}

@@ -1435,10 +1435,24 @@ async def start_relink(request: Request, background_tasks: BackgroundTasks):
 
 
 @app.get("/tasks/relink/status", response_class=HTMLResponse)
-async def relink_status(request: Request):
+async def relink_status(request: Request, db: AsyncSession = Depends(get_db)):
+    # When relink just finished, also return updated broken-links list via OOB swap
+    broken: list = []
+    refresh = not _relink_state["running"] and bool(_relink_state.get("checked"))
+    if refresh and not _link_scan["running"]:
+        result = await db.execute(
+            select(Document)
+            .options(joinedload(Document.group), joinedload(Document.subgroup))
+            .where(Document.broken_link == True)
+            .order_by(desc(Document.time_file_was_imported))
+        )
+        broken = result.scalars().all()
     return templates.TemplateResponse("_relink.html", {
         "request": request,
         "relink_state": _relink_state,
+        "refresh_broken": refresh,
+        "broken_links": broken,
+        "scan_state": _link_scan,
     })
 
 
