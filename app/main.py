@@ -1397,7 +1397,14 @@ _relink_state: dict = {"running": False, "total": 0, "checked": 0, "linked": 0, 
 
 
 async def _resolve_drive_path(path: str) -> tuple[Optional[str], str]:
-    """Walk a folder path. Returns (folder_id_or_None, diagnostic_string)."""
+    """Walk a folder path. Returns (folder_id_or_None, diagnostic_string).
+
+    Three-tier resolution:
+    1. From filed root (documents/) — handles normal paths
+    2. From My Drive root — handles folders at My Drive top level
+    3. Drive-wide name search for first segment — handles orphaned peer
+       folders like Work/ that share no parent with documents/
+    """
     import asyncio as _asyncio
     from config import settings as _settings
     service = get_drive_service()
@@ -1405,37 +1412,64 @@ async def _resolve_drive_path(path: str) -> tuple[Optional[str], str]:
     if not parts:
         return _settings.drive_filed_root_folder_id, ""
 
-    # Resolve "root" to its real Drive ID so queries are reliable
     root_meta = await _asyncio.to_thread(
         service.files().get(fileId="root", fields="id").execute
     )
     my_drive_root_id = root_meta["id"]
 
-    async def _walk(start_id: str, label: str) -> tuple[Optional[str], str]:
+    async def _walk(start_id: str) -> Optional[str]:
         current_id = start_id
-        for i, part in enumerate(parts):
+        for part in parts:
             req = service.files().list(
                 q=f"name = '{_dq(part)}' and '{current_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-                fields="files(id,name)",
-                pageSize=5,
+                fields="files(id)",
+                pageSize=1,
             )
-            resp = await _asyncio.to_thread(req.execute)
-            files = resp.get("files", [])
+            files = (await _asyncio.to_thread(req.execute)).get("files", [])
             if not files:
-                walked = "/".join(parts[:i])
-                return None, f"'{part}' not found under {label}/{walked or '(root)'}"
+                return None
             current_id = files[0]["id"]
-        return current_id, ""
+        return current_id
 
-    # Try filed root first
-    result, diag = await _walk(_settings.drive_filed_root_folder_id, "documents")
+    # Tier 1: filed root
+    result = await _walk(_settings.drive_filed_root_folder_id)
     if result:
         return result, ""
-    # Fall back to real My Drive root
-    result2, diag2 = await _walk(my_drive_root_id, "My Drive")
-    if result2:
-        return result2, ""
-    return None, f"{diag} | {diag2}"
+
+    # Tier 2: My Drive root (proper hierarchy)
+    result = await _walk(my_drive_root_id)
+    if result:
+        return result, ""
+
+    # Tier 3: drive-wide search for first segment, then walk the rest
+    # Handles orphaned peer folders (e.g. Work/) that have no parent in hierarchy
+    head, tail = parts[0], parts[1:]
+    resp = await _asyncio.to_thread(
+        service.files().list(
+            q=f"name = '{_dq(head)}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+            fields="files(id,name,parents)",
+            pageSize=10,
+        ).execute
+    )
+    candidates = resp.get("files", [])
+    for candidate in candidates:
+        current_id = candidate["id"]
+        found = True
+        for part in tail:
+            req = service.files().list(
+                q=f"name = '{_dq(part)}' and '{current_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                fields="files(id)",
+                pageSize=1,
+            )
+            files = (await _asyncio.to_thread(req.execute)).get("files", [])
+            if not files:
+                found = False
+                break
+            current_id = files[0]["id"]
+        if found:
+            return current_id, ""
+
+    return None, f"'{head}' not found in filed root, My Drive, or anywhere in Drive"
 
 
 async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
