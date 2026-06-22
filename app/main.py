@@ -625,9 +625,19 @@ async def library_delete_subgroup(group_id: int, subgroup_id: int, db: AsyncSess
     s = await db.get(Subgroup, subgroup_id)
     if not s:
         raise HTTPException(404)
-    docs = (await db.execute(select(Document).where(Document.subgroup_id == subgroup_id).limit(1))).scalar_one_or_none()
-    if docs:
-        raise HTTPException(409, "Subgroup has documents — reassign them first")
+    # Move any documents to the group's root ('/') subgroup before deleting
+    root_sub = (await db.execute(
+        select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name == "/")
+    )).scalar_one_or_none()
+    if not root_sub:
+        root_sub = Subgroup(group_id=group_id, name="/")
+        db.add(root_sub)
+        await db.flush()
+    await db.execute(
+        Document.__table__.update()
+        .where(Document.subgroup_id == subgroup_id)
+        .values(subgroup_id=root_sub.id)
+    )
     await db.delete(s)
     await db.commit()
     return RedirectResponse(f"/library/{group_id}", status_code=303)
