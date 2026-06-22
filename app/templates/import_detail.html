@@ -26,6 +26,10 @@
     <p class="text-xs text-gray-400 shrink-0">{{ file.createdTime[:10] }}</p>
     <a href="/import/{{ file.id }}/view" target="_blank"
        class="text-xs text-blue-500 font-medium shrink-0 active:opacity-60">Open ↗</a>
+    <form action="/import/{{ file.id }}/delete-from-drive" method="post"
+          onsubmit="return confirm('Move this file to Drive trash?')" class="shrink-0">
+      <button type="submit" class="text-xs text-red-400 font-medium active:opacity-60">Delete</button>
+    </form>
   </div>
 </div>
 
@@ -49,8 +53,14 @@
     <div class="hidden sm:block bg-white rounded-2xl p-3 shadow-sm mb-5">
       <p class="text-sm text-gray-700 break-all leading-snug mb-0.5">{{ file.name }}</p>
       <p class="text-xs text-gray-400 mb-2">{{ file.createdTime[:10] }}</p>
-      <a href="/import/{{ file.id }}/view" target="_blank"
-         class="text-xs text-blue-500 font-medium">Open in new tab ↗</a>
+      <div class="flex items-center justify-between">
+        <a href="/import/{{ file.id }}/view" target="_blank"
+           class="text-xs text-blue-500 font-medium">Open in new tab ↗</a>
+        <form action="/import/{{ file.id }}/delete-from-drive" method="post"
+              onsubmit="return confirm('Move this file to Drive trash?')">
+          <button type="submit" class="text-xs text-red-400 font-medium active:opacity-60">Delete</button>
+        </form>
+      </div>
     </div>
 
     <!-- Picker (single element, always in DOM — HTMX targets here) -->
