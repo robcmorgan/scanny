@@ -13,7 +13,7 @@
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
 
-  <main class="flex-1 max-w-xl w-full mx-auto px-4 pt-5 pb-28">
+  <main class="flex-1 max-w-xl {% block main_class %}{% endblock %} w-full mx-auto px-4 pt-5 pb-28">
     {% block content %}{% endblock %}
   </main>
 

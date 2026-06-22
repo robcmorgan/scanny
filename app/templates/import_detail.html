@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% set active = 'import' %}
+{% block main_class %}sm:max-w-4xl{% endblock %}
 {% block title %}{% if file.name.startswith('Scanned_') %}{{ file.createdTime[:10] }}{% else %}{{ file.name }}{% endif %} — Phone{% endblock %}
 {% block content %}
 {% set is_default_name = file.name.startswith('Scanned_') %}
@@ -11,12 +12,31 @@
   Phone
 </a>
 
+<!-- Mobile: full-width thumbnail with scrollable container -->
+<div class="sm:hidden mb-3">
+  <a href="/import/{{ file.id }}/view" target="_blank"
+     class="block rounded-2xl overflow-hidden bg-gray-100 active:opacity-70"
+     style="max-height: 50vh; overflow-y: auto;">
+    <img src="/import/thumbnail/{{ file.id }}"
+         class="w-full"
+         onerror="this.style.display='none'">
+  </a>
+  <div class="flex items-center gap-2 mt-2 px-1">
+    {% if not is_default_name %}
+    <p class="text-sm text-gray-700 truncate flex-1">{{ file.name }}</p>
+    {% endif %}
+    <p class="text-xs text-gray-400 shrink-0">{{ file.createdTime[:10] }}</p>
+    <a href="/import/{{ file.id }}/view" target="_blank"
+       class="text-xs text-blue-500 font-medium shrink-0 active:opacity-60">Open ↗</a>
+  </div>
+</div>
+
 <div class="sm:flex sm:gap-6 sm:items-start">
 
-  <!-- Desktop: document viewer sized to one A4 page -->
+  <!-- Desktop: document viewer fills left column -->
   <div class="hidden sm:block sm:flex-1 sticky top-4">
-    <div class="bg-gray-100 rounded-2xl overflow-hidden mx-auto"
-         style="max-height: min(680px, calc(100vh - 160px)); aspect-ratio: 210/297;">
+    <div class="bg-gray-100 rounded-2xl overflow-hidden w-full"
+         style="height: min(820px, calc(100vh - 140px));">
       <iframe src="/import/{{ file.id }}/view#toolbar=0"
               class="w-full h-full border-0"
               style="color-scheme: light"
@@ -24,26 +44,10 @@
     </div>
   </div>
 
-  <!-- Right / single column on mobile -->
-  <div class="sm:w-80 sm:shrink-0">
+  <!-- Right panel -->
+  <div class="sm:w-72 sm:shrink-0">
 
-    <!-- Mobile: compact card with thumbnail -->
-    <div data-file-card="" class="bg-white rounded-2xl overflow-hidden shadow-sm mb-5 flex gap-3 p-3 sm:hidden">
-      <a href="/import/{{ file.id }}/view" target="_blank"
-         class="w-16 h-20 rounded-xl overflow-hidden bg-gray-100 shrink-0 block active:opacity-70">
-        <img src="/import/thumbnail/{{ file.id }}"
-             class="w-full h-full object-cover"
-             onerror="this.style.display='none'">
-      </a>
-      <div class="flex-1 min-w-0 flex flex-col justify-center gap-1">
-        {% if not is_default_name %}<p class="text-sm font-medium text-gray-900 leading-snug break-all">{{ file.name }}</p>{% endif %}
-        <p class="text-xs text-gray-400">{{ file.createdTime[:10] }}</p>
-        <a href="/import/{{ file.id }}/view" target="_blank"
-           class="text-xs text-blue-500 font-medium active:opacity-60">Open ↗</a>
-      </div>
-    </div>
-
-    <!-- Desktop: compact info card (no thumbnail, doc is shown left) -->
+    <!-- Desktop: compact info card -->
     <div class="hidden sm:block bg-white rounded-2xl p-3 shadow-sm mb-5">
       {% if not is_default_name %}<p class="text-sm font-medium text-gray-900 break-all leading-snug mb-0.5">{{ file.name }}</p>{% endif %}
       <p class="text-xs text-gray-400 mb-2">{{ file.createdTime[:10] }}</p>
