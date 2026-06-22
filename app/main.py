@@ -1354,8 +1354,14 @@ async def import_file(
 
 @app.post("/import/{drive_file_id}/delete-from-drive")
 async def import_delete_from_drive(drive_file_id: str, db: AsyncSession = Depends(get_db)):
+    from googleapiclient.errors import HttpError as _HttpError
     service = get_drive_service()
-    await asyncio.to_thread(lambda: service.files().update(fileId=drive_file_id, body={"trashed": True}).execute())
+    try:
+        await asyncio.to_thread(lambda: service.files().update(fileId=drive_file_id, body={"trashed": True}).execute())
+    except _HttpError as e:
+        if e.resp.status not in (403, 404):
+            raise HTTPException(502, f"Drive error: {e}")
+        # 403 = not owner; 404 = already gone — either way, clean up locally
     # Remove any untagged queue record (scanner/watcher entry)
     queued = (await db.execute(
         select(Document).where(Document.drive_file_id == drive_file_id, Document.group_id.is_(None))
@@ -1368,13 +1374,18 @@ async def import_delete_from_drive(drive_file_id: str, db: AsyncSession = Depend
 
 @app.post("/document/{document_id}/delete-from-drive")
 async def document_delete_from_drive(document_id: int, db: AsyncSession = Depends(get_db)):
+    from googleapiclient.errors import HttpError as _HttpError
     doc = await db.get(Document, document_id)
     if not doc:
         raise HTTPException(404)
     back_url = f"/library/{doc.group_id}/{doc.subgroup_id}" if doc.subgroup_id else f"/library/{doc.group_id}" if doc.group_id else "/library"
     if doc.drive_file_id:
         service = get_drive_service()
-        await asyncio.to_thread(lambda: service.files().update(fileId=doc.drive_file_id, body={"trashed": True}).execute())
+        try:
+            await asyncio.to_thread(lambda: service.files().update(fileId=doc.drive_file_id, body={"trashed": True}).execute())
+        except _HttpError as e:
+            if e.resp.status not in (403, 404):
+                raise HTTPException(502, f"Drive error: {e}")
     await db.delete(doc)
     await db.commit()
     return RedirectResponse(back_url, status_code=303)
