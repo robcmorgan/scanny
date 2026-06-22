@@ -1104,28 +1104,33 @@ async def import_create_subgroup(
     name: str = Form(...),
     db: AsyncSession = Depends(get_db),
 ):
-    db.add(Subgroup(group_id=group_id, name=name.strip()))
-    await db.commit()
+    new_sub = Subgroup(group_id=group_id, name=name.strip())
+    db.add(new_sub)
+    await db.flush()  # get the new id before commit
+    await db.refresh(new_sub)
     group = await db.get(Group, group_id)
-    recent = await db.execute(
-        select(Subgroup)
-        .where(Subgroup.group_id == group_id, Subgroup.name != "/")
-        .order_by(desc(Subgroup.last_used), Subgroup.name)
-        .limit(5)
+    new_sub.group = group
+    await db.commit()
+    # Go straight to confirm for the new subgroup
+    service = get_drive_service()
+    file = await asyncio.to_thread(
+        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime").execute()
     )
-    all_subs = await db.execute(
-        select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name != "/").order_by(Subgroup.name)
-    )
-    slash = await db.execute(
-        select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name == "/").limit(1)
-    )
-    return templates.TemplateResponse("_import_detail_subgroups.html", {
+    subgroup_label = new_sub.name if new_sub.name != "/" else group.name
+    color_key = (group.name + "/" + new_sub.name) if new_sub.name != "/" else group.name
+    from services.filer import parse_date_from_filename as _parse_dt
+    scan_dt = _parse_dt(file["name"]) or datetime.utcnow()
+    return templates.TemplateResponse("_import_detail_confirm.html", {
         "request": request,
         "file_id": drive_file_id,
+        "drive_filename": file["name"],
+        "filename_tag": new_sub.filename_tag or "",
+        "subgroup": new_sub,
         "group": group,
-        "subgroups": recent.scalars().all(),
-        "all_subgroups": all_subs.scalars().all(),
-        "slash_sub": slash.scalar_one_or_none(),
+        "subgroup_label": subgroup_label,
+        "color_key": color_key,
+        "scan_date_str": scan_dt.strftime("%Y-%m-%d"),
+        "scan_time_str": scan_dt.strftime("%H%M%S"),
     })
 
 
