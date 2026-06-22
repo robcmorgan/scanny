@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     poll_interval_seconds: int = 30
     app_base_url: str = "http://localhost:9841"
     drive_import_folder_id: str = ""
+    drive_tasks_folder_id: str = ""   # Drive folder ID for 2Do task queue files
 
     class Config:
         env_file = "../.env"

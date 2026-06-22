@@ -886,15 +886,32 @@ async def update_document(
     task_note: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
-    doc = await db.get(Document, document_id)
+    result = await db.execute(
+        select(Document)
+        .options(joinedload(Document.group), joinedload(Document.subgroup))
+        .where(Document.id == document_id)
+    )
+    doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(404)
+    prev_rob = doc.assigned_rob_task
+    prev_beccy = doc.assigned_beccy_task
     doc.assigned_item_one_off_description = item_one_off_description.strip() or None
     doc.assigned_comment = comment.strip() or None
     doc.assigned_rob_task = rob_task == "1"
     doc.assigned_beccy_task = beccy_task == "1"
     doc.assigned_task_note = task_note.strip() or None
     await db.commit()
+    # Queue 2Do tasks for newly-checked boxes only
+    title = doc.assigned_task_note or doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported or "Scanny document"
+    g = doc.group.name if doc.group else ""
+    s = doc.subgroup.name if doc.subgroup and doc.subgroup.name != "/" else ""
+    category = f"{g} / {s}" if s else g
+    scan_date = doc.timestamp_from_filename.strftime("%d %B %Y") if doc.timestamp_from_filename else ""
+    if doc.assigned_rob_task and not prev_rob:
+        await _queue_2do_task(doc.id, title, category, "rob", scan_date)
+    if doc.assigned_beccy_task and not prev_beccy:
+        await _queue_2do_task(doc.id, title, category, "beccy", scan_date)
     return RedirectResponse(f"/document/{document_id}", status_code=303)
 
 
@@ -1343,6 +1360,16 @@ async def import_file(
     subgroup.last_used = datetime.utcnow()
     await db.commit()
 
+    # Queue 2Do tasks
+    if doc.assigned_rob_task or doc.assigned_beccy_task:
+        _title = doc.assigned_task_note or clean_one_off or filename or drive_file["name"]
+        _cat = f"{group.name} / {subgroup.name}" if subgroup.name != "/" else group.name
+        _date = scan_dt.strftime("%d %B %Y")
+        if doc.assigned_rob_task:
+            await _queue_2do_task(doc.id, _title, _cat, "rob", _date)
+        if doc.assigned_beccy_task:
+            await _queue_2do_task(doc.id, _title, _cat, "beccy", _date)
+
     if from_detail:
         return RedirectResponse("/import", status_code=303)
     label = subgroup.name if subgroup.name != "/" else group.name
@@ -1407,6 +1434,43 @@ async def document_delete_from_drive(document_id: int, db: AsyncSession = Depend
     await db.delete(doc)
     await db.commit()
     return RedirectResponse(back_url, status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# 2Do task queue
+# ---------------------------------------------------------------------------
+
+async def _queue_2do_task(doc_id: int, title: str, category: str, assignee: str, scan_date: str = ""):
+    """Write a task JSON file to the Drive tasks folder for the Mac sync agent to pick up."""
+    if not settings.drive_tasks_folder_id:
+        return
+    import json as _json
+    from googleapiclient.http import MediaInMemoryUpload
+
+    list_name = "go with Rob incoming" if assignee == "rob" else "Beccy incoming"
+    note_lines = [l for l in [category, f"{settings.app_base_url}/document/{doc_id}", f"Scanned {scan_date}" if scan_date else ""] if l]
+    task = {"title": title, "note": "\n".join(note_lines), "list": list_name, "doc_id": doc_id}
+    filename = f"scanny_{assignee}_{doc_id}.json"
+    content = _json.dumps(task, indent=2).encode()
+
+    def _upload():
+        svc = get_drive_service()
+        existing = svc.files().list(
+            q=f"name='{filename}' and '{settings.drive_tasks_folder_id}' in parents and trashed=false",
+            fields="files(id)",
+        ).execute().get("files", [])
+        for f in existing:
+            svc.files().delete(fileId=f["id"]).execute()
+        svc.files().create(
+            body={"name": filename, "parents": [settings.drive_tasks_folder_id]},
+            media_body=MediaInMemoryUpload(content, mimetype="application/json"),
+            fields="id",
+        ).execute()
+
+    try:
+        await asyncio.to_thread(_upload)
+    except Exception as e:
+        print(f"[2Do queue] doc={doc_id} assignee={assignee}: {e}")
 
 
 # ---------------------------------------------------------------------------
