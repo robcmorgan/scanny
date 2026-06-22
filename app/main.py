@@ -1424,21 +1424,37 @@ async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
     _relink_state.update({"running": True, "checked": 0, "linked": 0, "total": 0, "error": None})
     try:
         # Resolve folder: treat as path if it contains '/' or looks short, else as Drive ID
-        if "/" in folder_input or len(folder_input) < 20:
+        folder_input_stripped = folder_input.strip().strip("/")
+        if not folder_input_stripped or folder_input_stripped == "/":
+            folder_id = _settings.drive_filed_root_folder_id
+        elif "/" in folder_input or len(folder_input) < 28:
             folder_id = await _resolve_drive_path(folder_input)
             if not folder_id:
-                _relink_state["error"] = f"Folder not found in Drive: {folder_input}"
+                # Give a helpful hint: list top-level folders in the filed root
+                try:
+                    service = get_drive_service()
+                    hint_resp = await _asyncio.to_thread(
+                        service.files().list(
+                            q=f"'{_settings.drive_filed_root_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                            fields="files(name)",
+                            pageSize=20,
+                        ).execute
+                    )
+                    names = sorted(f["name"] for f in hint_resp.get("files", []))
+                    hint = f" Top-level folders: {', '.join(names)}" if names else ""
+                except Exception:
+                    hint = ""
+                _relink_state["error"] = f"Folder not found in Drive: {folder_input}.{hint}"
                 return
         else:
             folder_id = folder_input.strip()
 
         async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(Document).where(
-                    Document.broken_link == True,
-                    Document.desired_full_path.contains(old_prefix),
-                )
-            )
+            clean_prefix = old_prefix.strip("/").strip()
+            conditions = [Document.broken_link == True]
+            if clean_prefix:
+                conditions.append(Document.desired_folder_location.contains(clean_prefix))
+            result = await db.execute(select(Document).where(*conditions))
             docs = result.scalars().all()
             _relink_state["total"] = len(docs)
             if not docs:
