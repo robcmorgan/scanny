@@ -1387,14 +1387,28 @@ async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
                     if not page_token:
                         break
 
+            # Build set of drive_file_ids already claimed by other documents
+            doc_ids_being_fixed = {d.id for d in docs}
+            used_ids_result = await db.execute(
+                select(Document.drive_file_id).where(
+                    Document.drive_file_id.isnot(None),
+                    ~Document.id.in_(doc_ids_being_fixed),
+                )
+            )
+            already_used: set = {row[0] for row in used_ids_result}
+            assigned_this_run: set = set()
+
             for doc in docs:
                 target = (doc.desired_filename or doc.file_name_when_imported or "").strip().lower()
                 if target:
                     matches = files_by_name.get(target, [])
                     if len(matches) == 1:
-                        doc.drive_file_id = matches[0]
-                        doc.broken_link = False
-                        _relink_state["linked"] += 1
+                        fid = matches[0]
+                        if fid not in already_used and fid not in assigned_this_run:
+                            doc.drive_file_id = fid
+                            doc.broken_link = False
+                            assigned_this_run.add(fid)
+                            _relink_state["linked"] += 1
                 _relink_state["checked"] += 1
 
             await db.commit()
