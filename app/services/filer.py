@@ -46,6 +46,7 @@ def build_filing_info(
     date_str = scan_datetime.strftime("%Y-%m-%d")
     time_str = scan_datetime.strftime("%H%M%S")
     if override_filename:
+        override_filename = re.sub(r'[\x00-\x1f\x7f]', '', override_filename).strip()
         stem = override_filename.rsplit(".", 1)[0] if "." in override_filename else override_filename
         filename = f"{stem}.{ext}"
     else:

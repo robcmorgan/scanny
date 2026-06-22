@@ -387,15 +387,19 @@ async def create_pending(
         except ValueError:
             pass
 
+    def _clean(s: Optional[str]) -> Optional[str]:
+        import re as _re
+        return _re.sub(r'[\x00-\x1f\x7f]', '', s).strip() or None if s else None
+
     pending = PendingScan(
         subgroup_id=subgroup_id,
-        item_one_off_description=item_one_off_description or None,
+        item_one_off_description=_clean(item_one_off_description),
         rob_task=bool(rob_task),
         beccy_task=bool(beccy_task),
-        task_note=task_note or None,
-        comment=comment or None,
+        task_note=_clean(task_note),
+        comment=_clean(comment),
         date_override=parsed_date,
-        override_filename=override_filename or None,
+        override_filename=_clean(override_filename),
     )
     db.add(pending)
 
