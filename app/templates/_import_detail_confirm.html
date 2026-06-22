@@ -14,10 +14,12 @@
     <span class="text-xs opacity-60 block leading-tight">{{ group.name }}</span>
     <span class="font-semibold leading-snug">{{ subgroup_label }}</span>
   </div>
-  <!-- + submit -->
-  <button type="submit" form="import-confirm-form"
-    class="w-11 h-11 bg-blue-600 active:bg-blue-700 text-white text-2xl font-bold rounded-2xl flex items-center justify-center shadow-sm shrink-0">
-    +
+  <!-- Save submit -->
+  <button type="submit" form="import-confirm-form" id="import-submit-btn"
+    class="w-11 h-11 bg-blue-600 active:bg-blue-700 text-white rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+    </svg>
   </button>
 </div>
 
@@ -125,9 +127,25 @@
   importUpdatePreview();
   datePrefix('import-date-chk', 'import-one-off', scanDate);
   if (document.getElementById('import-one-off').value) importSyncOneOff();
-  setTimeout(function() {
-    var inp = document.getElementById('import-one-off');
-    if (inp) inp.focus();
-  }, 50);
+
+  // Focus the save button so Enter submits immediately
+  var submitBtn = document.getElementById('import-submit-btn');
+  var oneOff = document.getElementById('import-one-off');
+  setTimeout(function() { if (submitBtn) submitBtn.focus(); }, 50);
+
+  // Typing any printable character redirects focus to the description field
+  document.addEventListener('keydown', function onConfirmKey(e) {
+    // Clean up listener if this partial is swapped out
+    if (!document.getElementById('import-submit-btn')) {
+      document.removeEventListener('keydown', onConfirmKey);
+      return;
+    }
+    var active = document.activeElement;
+    var inInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+    if (!inInput && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      oneOff.focus();
+      // character flows naturally into the now-focused input
+    }
+  });
 })();
 </script>
