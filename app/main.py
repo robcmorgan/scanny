@@ -1397,25 +1397,35 @@ _relink_state: dict = {"running": False, "total": 0, "checked": 0, "linked": 0, 
 
 
 async def _resolve_drive_path(path: str) -> Optional[str]:
+    """Walk a folder path in Drive. Tries filed root first, then My Drive root."""
     import asyncio as _asyncio
     from config import settings as _settings
     service = get_drive_service()
     parts = [p for p in path.strip("/").split("/") if p]
     if not parts:
         return _settings.drive_filed_root_folder_id
-    current_id = _settings.drive_filed_root_folder_id
-    for part in parts:
-        req = service.files().list(
-            q=f"name = '{part}' and '{current_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-            fields="files(id)",
-            pageSize=1,
-        )
-        resp = await _asyncio.to_thread(req.execute)
-        files = resp.get("files", [])
-        if not files:
-            return None
-        current_id = files[0]["id"]
-    return current_id
+
+    async def _walk(start_id: str) -> Optional[str]:
+        current_id = start_id
+        for part in parts:
+            req = service.files().list(
+                q=f"name = '{_dq(part)}' and '{current_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+                fields="files(id)",
+                pageSize=1,
+            )
+            resp = await _asyncio.to_thread(req.execute)
+            files = resp.get("files", [])
+            if not files:
+                return None
+            current_id = files[0]["id"]
+        return current_id
+
+    # Try from the filed root first (fast path for paths within documents/)
+    result = await _walk(_settings.drive_filed_root_folder_id)
+    if result:
+        return result
+    # Fall back to My Drive root so sibling folders (e.g. Work/) are reachable
+    return await _walk("root")
 
 
 async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
