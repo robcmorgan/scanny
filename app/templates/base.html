@@ -122,7 +122,8 @@
         var nav = holder.querySelector('[data-nav]');
         if (nav) window.location.href = nav.href;
       }
-      holdFired = false;
+      // Don't reset holdFired here — desktop click fires after pointerup,
+      // so holdFired must stay true until the click handler catches it
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', cleanup);
     }
@@ -141,11 +142,13 @@
   // Desktop: suppress click that fires after a mouse hold
   document.addEventListener('click', function(e) {
     if (e.target.closest('[data-edit-overlay]')) return;
-    if (holdFired && e.target.closest('[data-holdable]')) {
+    if (holdFired) {
       holdFired = false;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      return;
+      if (e.target.closest('[data-holdable]')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+      }
     }
     if (!e.target.closest('[data-holdable]')) dismissAll();
   }, true);
