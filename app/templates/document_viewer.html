@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% set active = 'library' %}
+{% block main_class %}sm:max-w-4xl{% endblock %}
 {% block title %}{{ doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported }}{% endblock %}
 {% block content %}
 
@@ -76,39 +77,51 @@
 
 {% if doc.drive_file_id %}
 
-<!-- Mobile: thumbnail card that opens PDF directly in the browser viewer -->
-<a href="/document/{{ doc.id }}/file"
-   class="block sm:hidden rounded-2xl overflow-hidden bg-gray-100 shadow-sm active:opacity-70 transition-opacity mb-3">
-  <div class="aspect-[3/4] relative">
+<!-- Mobile: full-width thumbnail with scroll -->
+<div class="sm:hidden mb-3">
+  <a href="/document/{{ doc.id }}/file"
+     class="block rounded-2xl overflow-hidden bg-gray-100 shadow-sm active:opacity-70"
+     style="max-height: 50vh; overflow-y: auto;">
     <img src="/thumbnail/{{ doc.id }}?v={{ doc.drive_file_id[-4:] }}"
-         class="w-full h-full object-cover"
+         class="w-full"
          onerror="this.style.display='none'">
-    <div class="absolute inset-x-0 bottom-0 flex justify-center pb-5">
-      <span class="bg-white/90 backdrop-blur text-gray-800 font-semibold text-sm px-5 py-2 rounded-full shadow">
-        Open PDF
-      </span>
-    </div>
-  </div>
-</a>
-
-<!-- Desktop: inline iframe -->
-<div class="hidden sm:block w-full rounded-2xl overflow-hidden bg-gray-100 shadow-sm" style="height: calc(100vh - 200px)">
-  <iframe src="/document/{{ doc.id }}/file" class="w-full h-full border-0"></iframe>
+  </a>
+  <p class="text-xs text-gray-400 text-center mt-2">
+    <a href="/document/{{ doc.id }}/file" target="_blank" class="text-blue-500">Open PDF ↗</a>
+  </p>
 </div>
-<p class="hidden sm:block text-xs text-gray-400 text-center mt-2">
-  <a href="/document/{{ doc.id }}/file" target="_blank" class="text-blue-500 underline">Open in new tab</a>
-</p>
 
 {% else %}
-<div class="text-center py-12 text-gray-400">
-  <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+<div class="sm:hidden text-center py-8 text-gray-400 mb-3">
+  <svg class="w-10 h-10 mx-auto mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
   </svg>
-  <p class="text-sm">No file linked to this document yet.</p>
+  <p class="text-sm">No file linked yet.</p>
 </div>
 {% endif %}
 
-<!-- Edit form -->
+<div class="sm:flex sm:gap-6 sm:items-start">
+
+{% if doc.drive_file_id %}
+<!-- Desktop: inline iframe fills left column -->
+<div class="hidden sm:block sm:flex-1 sticky top-4">
+  <div class="bg-gray-100 rounded-2xl overflow-hidden w-full shadow-sm"
+       style="height: min(820px, calc(100vh - 140px));">
+    <iframe src="/document/{{ doc.id }}/file" class="w-full h-full border-0"></iframe>
+  </div>
+  <p class="text-xs text-gray-400 text-center mt-2">
+    <a href="/document/{{ doc.id }}/file" target="_blank" class="text-blue-500">Open in new tab ↗</a>
+  </p>
+</div>
+{% else %}
+<div class="hidden sm:flex sm:flex-1 items-center justify-center text-gray-300 py-20">
+  <svg class="w-12 h-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+  </svg>
+</div>
+{% endif %}
+
+<!-- Edit form --><div class="sm:w-80 sm:shrink-0">
 <form action="/document/{{ doc.id }}/update" method="post" class="mt-5 space-y-3">
 
   <input type="text" name="item_one_off_description"
@@ -149,6 +162,9 @@
     Save changes
   </button>
 </form>
+
+</div><!-- end sm:w-80 right panel -->
+</div><!-- end sm:flex wrapper -->
 
 <script>
 function editToggleTodo() {
