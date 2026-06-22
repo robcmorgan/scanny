@@ -1355,7 +1355,7 @@ async def import_file(
 @app.post("/import/{drive_file_id}/delete-from-drive")
 async def import_delete_from_drive(drive_file_id: str, db: AsyncSession = Depends(get_db)):
     service = get_drive_service()
-    await asyncio.to_thread(lambda: service.files().trash(fileId=drive_file_id).execute())
+    await asyncio.to_thread(lambda: service.files().update(fileId=drive_file_id, body={"trashed": True}).execute())
     # Remove any untagged queue record (scanner/watcher entry)
     queued = (await db.execute(
         select(Document).where(Document.drive_file_id == drive_file_id, Document.group_id.is_(None))
@@ -1374,7 +1374,7 @@ async def document_delete_from_drive(document_id: int, db: AsyncSession = Depend
     back_url = f"/library/{doc.group_id}/{doc.subgroup_id}" if doc.subgroup_id else f"/library/{doc.group_id}" if doc.group_id else "/library"
     if doc.drive_file_id:
         service = get_drive_service()
-        await asyncio.to_thread(lambda: service.files().trash(fileId=doc.drive_file_id).execute())
+        await asyncio.to_thread(lambda: service.files().update(fileId=doc.drive_file_id, body={"trashed": True}).execute())
     await db.delete(doc)
     await db.commit()
     return RedirectResponse(back_url, status_code=303)
