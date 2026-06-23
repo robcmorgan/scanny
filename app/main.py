@@ -1695,6 +1695,9 @@ async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
                         if _word_match(target, name)
                         for fid in ids
                     ]
+                # If multiple matches, drop already-claimed ones — handles Drive's "(1)" duplicates
+                if len(matches) > 1:
+                    matches = [f for f in matches if f not in already_used and f not in assigned_this_run]
                 if len(matches) == 1:
                     fid = matches[0]
                     if fid not in already_used and fid not in assigned_this_run:
