@@ -29,11 +29,11 @@
 {% endif %}
 
 <form hx-post="/tasks/relink" hx-target="#relink-section" hx-swap="innerHTML" class="space-y-2">
-  <input name="old_prefix" placeholder="Category filter, e.g. For Creatives (blank = all)"
+  <input name="old_prefix" placeholder="Category filter, e.g. Car Elgrand or Elgrand (blank = all)"
     class="w-full bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-sm outline-none focus:border-blue-300 shadow-sm">
-  <input name="folder_input" placeholder="Drive folder to search, e.g. For Creatives"
+  <input name="folder_input" placeholder="Drive folder, e.g. Car/Elgrand or For Creatives"
     class="w-full bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-sm outline-none focus:border-blue-300 shadow-sm">
-  <p class="text-xs text-gray-400 px-1">Category filter matches against the stored folder path (e.g. <span class="font-mono">For Creatives/VAT</span>). Drive folder path is relative to your filed root.</p>
+  <p class="text-xs text-gray-400 px-1">Category filter words are matched individually against the stored path — spaces and slashes are interchangeable. Drive folder walks from filed root, then My Drive root, then searches Drive-wide.</p>
   <button type="submit"
     class="w-full bg-blue-500 text-white rounded-2xl px-4 py-2.5 text-sm font-medium active:bg-blue-600 transition-colors shadow-sm">
     Search &amp; re-link

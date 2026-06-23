@@ -1626,7 +1626,11 @@ async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
             clean_prefix = old_prefix.strip("/").strip()
             conditions = [Document.broken_link == True]
             if clean_prefix:
-                conditions.append(Document.desired_folder_location.contains(clean_prefix))
+                # Word-by-word match so "Car Elgrand" matches "Car/Elgrand/"
+                # and "For Creatives" matches "For Creatives/"
+                words = clean_prefix.replace("/", " ").split()
+                for word in words:
+                    conditions.append(Document.desired_folder_location.contains(word))
             result = await db.execute(select(Document).where(*conditions))
             docs = result.scalars().all()
             _relink_state["total"] = len(docs)
