@@ -1699,7 +1699,12 @@ async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
                         for fid in ids
                         if fid not in already_used and fid not in assigned_this_run
                     ]
-                if len(candidates) == 1:
+                # Sort for determinism; prefer exact-name match first
+                candidates.sort(key=lambda f: (
+                    0 if files_by_name.get(target) and f in files_by_name[target] else 1,
+                    f,
+                ))
+                if candidates:
                     doc.drive_file_id = candidates[0]
                     doc.broken_link = False
                     assigned_this_run.add(candidates[0])
