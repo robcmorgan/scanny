@@ -1423,6 +1423,17 @@ async def import_delete_from_drive(drive_file_id: str, db: AsyncSession = Depend
     return RedirectResponse("/import", status_code=303)
 
 
+@app.post("/document/{document_id}/delete-record", response_class=HTMLResponse)
+async def document_delete_record(document_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete just the library record (no Drive action). Returns empty string so HTMX removes the element."""
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404)
+    await db.delete(doc)
+    await db.commit()
+    return HTMLResponse("")
+
+
 @app.post("/document/{document_id}/delete-from-drive")
 async def document_delete_from_drive(document_id: int, db: AsyncSession = Depends(get_db)):
     doc = await db.get(Document, document_id)
@@ -1491,10 +1502,20 @@ async def _duplicate_broken_ids(db: AsyncSession, broken_docs: list) -> set:
         .distinct()
     )
     linked_pairs = {(r[0], r[1]) for r in linked.fetchall()}
-    return {
+    dup_ids = {
         doc.id for doc in broken_docs
         if (doc.desired_filename, doc.desired_folder_location) in linked_pairs
     }
+    # Also flag within the broken set: keep the lowest-ID record, flag the rest
+    from collections import defaultdict
+    groups: dict = defaultdict(list)
+    for doc in broken_docs:
+        groups[(doc.desired_filename, doc.desired_folder_location)].append(doc.id)
+    for ids in groups.values():
+        if len(ids) > 1:
+            ids.sort()
+            dup_ids.update(ids[1:])  # everything after the first is a duplicate
+    return dup_ids
 
 
 async def _run_broken_links_scan() -> None:
