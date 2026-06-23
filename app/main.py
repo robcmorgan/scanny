@@ -1673,17 +1673,34 @@ async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
             already_used: set = {row[0] for row in used_ids_result}
             assigned_this_run: set = set()
 
+            def _word_match(target_name: str, drive_name: str) -> bool:
+                """All words from target_name appear in drive_name (handles extra words like 'V5')."""
+                target_words = set(re.findall(r'[a-z0-9]+', target_name.lower()))
+                drive_words = set(re.findall(r'[a-z0-9]+', drive_name.lower()))
+                return bool(target_words) and target_words.issubset(drive_words)
+
             for doc in docs:
                 target = (doc.desired_filename or doc.file_name_when_imported or "").strip().lower()
-                if target:
-                    matches = files_by_name.get(target, [])
-                    if len(matches) == 1:
-                        fid = matches[0]
-                        if fid not in already_used and fid not in assigned_this_run:
-                            doc.drive_file_id = fid
-                            doc.broken_link = False
-                            assigned_this_run.add(fid)
-                            _relink_state["linked"] += 1
+                if not target:
+                    _relink_state["checked"] += 1
+                    continue
+                # Exact match first
+                matches = files_by_name.get(target, [])
+                # Word-overlap fallback: all words from desired must appear in Drive filename
+                if not matches:
+                    matches = [
+                        fid
+                        for name, ids in files_by_name.items()
+                        if _word_match(target, name)
+                        for fid in ids
+                    ]
+                if len(matches) == 1:
+                    fid = matches[0]
+                    if fid not in already_used and fid not in assigned_this_run:
+                        doc.drive_file_id = fid
+                        doc.broken_link = False
+                        assigned_this_run.add(fid)
+                        _relink_state["linked"] += 1
                 _relink_state["checked"] += 1
 
             await db.commit()
