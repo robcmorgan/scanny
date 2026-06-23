@@ -23,7 +23,15 @@
 <div class="bg-white border border-gray-100 rounded-2xl px-4 py-3 mb-3 shadow-sm">
   <p class="text-sm text-gray-700">
     Linked <strong>{{ relink_state.linked }}</strong> of {{ relink_state.total }} documents.
-    {% if relink_state.total - relink_state.linked %}<span class="text-gray-400">{{ relink_state.total - relink_state.linked }} not matched.</span>{% endif %}
+    {% set unlinked = relink_state.total - relink_state.linked %}
+    {% if unlinked %}
+      {% if relink_state.duplicate %}
+        <span class="text-amber-600">{{ relink_state.duplicate }} duplicate{% if relink_state.duplicate != 1 %}s{% endif %} already in library.</span>
+      {% endif %}
+      {% if unlinked - relink_state.duplicate %}
+        <span class="text-gray-400">{{ unlinked - relink_state.duplicate }} not found in Drive.</span>
+      {% endif %}
+    {% endif %}
   </p>
 </div>
 {% endif %}

@@ -1481,6 +1481,22 @@ async def _queue_2do_task(doc_id: int, title: str, category: str, assignee: str,
 _link_scan: dict = {"running": False, "total": 0, "checked": 0}
 
 
+async def _duplicate_broken_ids(db: AsyncSession, broken_docs: list) -> set:
+    """Return IDs of broken docs whose filename+folder is already covered by a linked doc."""
+    if not broken_docs:
+        return set()
+    linked = await db.execute(
+        select(Document.desired_filename, Document.desired_folder_location)
+        .where(Document.drive_file_id.isnot(None), Document.broken_link == False)
+        .distinct()
+    )
+    linked_pairs = {(r[0], r[1]) for r in linked.fetchall()}
+    return {
+        doc.id for doc in broken_docs
+        if (doc.desired_filename, doc.desired_folder_location) in linked_pairs
+    }
+
+
 async def _run_broken_links_scan() -> None:
     import asyncio as _asyncio
     from googleapiclient.errors import HttpError
@@ -1527,7 +1543,7 @@ async def _run_broken_links_scan() -> None:
 # Re-link background scan
 # ---------------------------------------------------------------------------
 
-_relink_state: dict = {"running": False, "total": 0, "checked": 0, "linked": 0, "error": None}
+_relink_state: dict = {"running": False, "total": 0, "checked": 0, "linked": 0, "duplicate": 0, "error": None}
 
 
 async def _resolve_drive_path(path: str) -> tuple[Optional[str], str]:
@@ -1609,7 +1625,7 @@ async def _resolve_drive_path(path: str) -> tuple[Optional[str], str]:
 async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
     import asyncio as _asyncio
     from collections import deque
-    _relink_state.update({"running": True, "checked": 0, "linked": 0, "total": 0, "error": None})
+    _relink_state.update({"running": True, "checked": 0, "linked": 0, "duplicate": 0, "total": 0, "error": None})
     try:
         # Resolve folder: treat as path if it contains '/' or looks short, else as Drive ID
         folder_input_stripped = folder_input.strip().strip("/")
@@ -1709,6 +1725,16 @@ async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
                     doc.broken_link = False
                     assigned_this_run.add(candidates[0])
                     _relink_state["linked"] += 1
+                else:
+                    # Check if all Drive matches are already claimed by other docs
+                    all_matches = list(files_by_name.get(target, []))
+                    if not all_matches:
+                        all_matches = [
+                            fid for name, ids in files_by_name.items()
+                            if _word_match(target, name) for fid in ids
+                        ]
+                    if all_matches and all(f in already_used or f in assigned_this_run for f in all_matches):
+                        _relink_state["duplicate"] += 1
                 _relink_state["checked"] += 1
 
             await db.commit()
@@ -1726,11 +1752,12 @@ async def start_relink(request: Request, background_tasks: BackgroundTasks):
     old_prefix = form.get("old_prefix", "").strip()
     folder_input = form.get("folder_input", "").strip()
     if old_prefix and folder_input and not _relink_state.get("running"):
-        _relink_state.update({"running": True, "checked": 0, "linked": 0, "total": 0, "error": None})
+        _relink_state.update({"running": True, "checked": 0, "linked": 0, "duplicate": 0, "total": 0, "error": None})
         background_tasks.add_task(_run_relink_scan, old_prefix, folder_input)
     return templates.TemplateResponse("_relink.html", {
         "request": request,
         "relink_state": _relink_state,
+        "duplicate_ids": set(),
     })
 
 
@@ -1738,6 +1765,7 @@ async def start_relink(request: Request, background_tasks: BackgroundTasks):
 async def relink_status(request: Request, db: AsyncSession = Depends(get_db)):
     # When relink just finished, also return updated broken-links list via OOB swap
     broken: list = []
+    dup_ids: set = set()
     refresh = not _relink_state["running"] and bool(_relink_state.get("checked"))
     if refresh and not _link_scan["running"]:
         result = await db.execute(
@@ -1747,11 +1775,13 @@ async def relink_status(request: Request, db: AsyncSession = Depends(get_db)):
             .order_by(desc(Document.time_file_was_imported))
         )
         broken = result.scalars().all()
+        dup_ids = await _duplicate_broken_ids(db, broken)
     return templates.TemplateResponse("_relink.html", {
         "request": request,
         "relink_state": _relink_state,
         "refresh_broken": refresh,
         "broken_links": broken,
+        "duplicate_ids": dup_ids,
         "scan_state": _link_scan,
     })
 
@@ -1859,6 +1889,7 @@ async def start_path_scan(request: Request, background_tasks: BackgroundTasks):
 @app.get("/tasks/path-scan/status", response_class=HTMLResponse)
 async def path_scan_status(request: Request, db: AsyncSession = Depends(get_db)):
     broken: list = []
+    dup_ids: set = set()
     refresh = not _path_scan_state["running"] and bool(_path_scan_state.get("checked"))
     if refresh and not _link_scan["running"]:
         result = await db.execute(
@@ -1868,11 +1899,13 @@ async def path_scan_status(request: Request, db: AsyncSession = Depends(get_db))
             .order_by(desc(Document.time_file_was_imported))
         )
         broken = result.scalars().all()
+        dup_ids = await _duplicate_broken_ids(db, broken)
     return templates.TemplateResponse("_path_scan.html", {
         "request": request,
         "path_scan_state": _path_scan_state,
         "refresh_broken": refresh,
         "broken_links": broken,
+        "duplicate_ids": dup_ids,
         "scan_state": _link_scan,
     })
 
@@ -1880,6 +1913,7 @@ async def path_scan_status(request: Request, db: AsyncSession = Depends(get_db))
 @app.get("/tasks", response_class=HTMLResponse)
 async def tasks(request: Request, db: AsyncSession = Depends(get_db)):
     broken: list = []
+    dup_ids: set = set()
     if not _link_scan["running"]:
         result = await db.execute(
             select(Document)
@@ -1888,10 +1922,12 @@ async def tasks(request: Request, db: AsyncSession = Depends(get_db)):
             .order_by(desc(Document.time_file_was_imported))
         )
         broken = result.scalars().all()
+        dup_ids = await _duplicate_broken_ids(db, broken)
     return templates.TemplateResponse("tasks.html", {
         "request": request,
         "active": "tasks",
         "broken_links": broken,
+        "duplicate_ids": dup_ids,
         "scan_state": _link_scan,
         "relink_state": _relink_state,
         "path_scan_state": _path_scan_state,
@@ -1911,12 +1947,14 @@ async def start_broken_links_check(
         "request": request,
         "scan_state": _link_scan,
         "broken_links": [],
+        "duplicate_ids": set(),
     })
 
 
 @app.get("/tasks/broken-links/status", response_class=HTMLResponse)
 async def broken_links_status(request: Request, db: AsyncSession = Depends(get_db)):
     broken: list = []
+    dup_ids: set = set()
     if not _link_scan["running"]:
         result = await db.execute(
             select(Document)
@@ -1925,10 +1963,12 @@ async def broken_links_status(request: Request, db: AsyncSession = Depends(get_d
             .order_by(desc(Document.time_file_was_imported))
         )
         broken = result.scalars().all()
+        dup_ids = await _duplicate_broken_ids(db, broken)
     return templates.TemplateResponse("_broken_links.html", {
         "request": request,
         "scan_state": _link_scan,
         "broken_links": broken,
+        "duplicate_ids": dup_ids,
     })
 
 
