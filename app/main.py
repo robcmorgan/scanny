@@ -1137,16 +1137,18 @@ async def import_create_subgroup(
     # Go straight to confirm for the new subgroup
     service = get_drive_service()
     file = await asyncio.to_thread(
-        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime").execute()
+        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime,parents").execute()
     )
     subgroup_label = new_sub.name if new_sub.name != "/" else group.name
     color_key = (group.name + "/" + new_sub.name) if new_sub.name != "/" else group.name
     from services.filer import parse_date_from_filename as _parse_dt, extract_drive_prefix as _pfx
     scan_dt = _parse_dt(file["name"]) or datetime.utcnow()
+    source_folder = (file.get("parents") or [settings.drive_incoming_folder_id])[0]
     return templates.TemplateResponse("_import_detail_confirm.html", {
         "request": request,
         "file_id": drive_file_id,
         "drive_filename": file["name"],
+        "source_folder_id": source_folder,
         "filename_prefix": _pfx(file["name"]),
         "filename_tag": new_sub.filename_tag or "",
         "subgroup": new_sub,
@@ -1173,16 +1175,18 @@ async def import_confirm(
     group = subgroup.group
     service = get_drive_service()
     file = await asyncio.to_thread(
-        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime").execute()
+        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime,parents").execute()
     )
     subgroup_label = subgroup.name if subgroup.name != "/" else group.name
     color_key = (group.name + "/" + subgroup.name) if subgroup.name != "/" else group.name
     from services.filer import parse_date_from_filename as _parse_dt, extract_drive_prefix as _pfx
     scan_dt = _parse_dt(file["name"]) or datetime.utcnow()
+    source_folder = (file.get("parents") or [settings.drive_incoming_folder_id])[0]
     return templates.TemplateResponse("_import_detail_confirm.html", {
         "request": request,
         "file_id": drive_file_id,
         "drive_filename": file["name"],
+        "source_folder_id": source_folder,
         "filename_prefix": _pfx(file["name"]),
         "filename_tag": subgroup.filename_tag or "",
         "subgroup": subgroup,
@@ -1315,9 +1319,13 @@ async def import_file(
     rob_task: Optional[str] = Form(None),
     beccy_task: Optional[str] = Form(None),
     task_note: Optional[str] = Form(None),
+    drive_filename: Optional[str] = Form(None),
+    source_folder_id: Optional[str] = Form(None),
+    scan_date_str: Optional[str] = Form(None),
+    scan_time_str: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
-    from services.filer import parse_date_from_filename
+    from services.filer import parse_date_from_filename, build_filing_info
 
     sub_result = await db.execute(
         select(Subgroup).options(joinedload(Subgroup.group)).where(Subgroup.id == subgroup_id)
@@ -1327,19 +1335,26 @@ async def import_file(
         raise HTTPException(404)
     group = subgroup.group
 
-    from services.filer import build_filing_info
-
-    service = get_drive_service()
-    drive_file = await asyncio.to_thread(
-        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime,mimeType,parents").execute()
-    )
-    file_created = datetime.fromisoformat(drive_file["createdTime"].replace("Z", "+00:00")).replace(tzinfo=None)
-    source_folder = (drive_file.get("parents") or [settings.drive_incoming_folder_id])[0]
-
     clean_override = override_filename.strip() if override_filename and override_filename.strip() else None
     clean_one_off = item_one_off_description.strip() if item_one_off_description and item_one_off_description.strip() else None
-    scan_dt = parse_date_from_filename(drive_file["name"]) or file_created
-    ext = drive_file["name"].rsplit(".", 1)[-1].lower() if "." in drive_file["name"] else "pdf"
+
+    if drive_filename and source_folder_id and scan_date_str and scan_time_str:
+        # Metadata embedded in form — no Drive API call needed
+        _fname = drive_filename
+        source_folder = source_folder_id
+        scan_dt = datetime.strptime(f"{scan_date_str} {scan_time_str}", "%Y-%m-%d %H%M%S")
+    else:
+        # Fallback for requests without embedded metadata
+        service = get_drive_service()
+        _df = await asyncio.to_thread(
+            lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime,parents").execute()
+        )
+        _fname = _df["name"]
+        source_folder = (_df.get("parents") or [settings.drive_incoming_folder_id])[0]
+        file_created = datetime.fromisoformat(_df["createdTime"].replace("Z", "+00:00")).replace(tzinfo=None)
+        scan_dt = parse_date_from_filename(_fname) or file_created
+
+    ext = _fname.rsplit(".", 1)[-1].lower() if "." in _fname else "pdf"
 
     # Compute destination purely in Python — no Drive calls yet
     folder_path, filename = build_filing_info(
@@ -1353,7 +1368,7 @@ async def import_file(
     )
     doc = existing_result.scalar_one_or_none()
     if doc is None:
-        doc = Document(drive_file_id=drive_file_id, file_name_when_imported=drive_file["name"])
+        doc = Document(drive_file_id=drive_file_id, file_name_when_imported=_fname)
         db.add(doc)
 
     doc.timestamp_from_filename = scan_dt
@@ -1378,7 +1393,7 @@ async def import_file(
 
     # Queue 2Do tasks in background too
     if doc.assigned_rob_task or doc.assigned_beccy_task:
-        _title = doc.assigned_task_note or clean_one_off or filename or drive_file["name"]
+        _title = doc.assigned_task_note or clean_one_off or filename or _fname
         _cat = f"{group.name} / {subgroup.name}" if subgroup.name != "/" else group.name
         _date = scan_dt.strftime("%d %B %Y")
         if doc.assigned_rob_task:
