@@ -1288,10 +1288,25 @@ async def import_pick(
     })
 
 
+async def _do_drive_filing(file_id: str, folder_path: str, filename: str, source_folder: str):
+    """Move and rename a Drive file in the background after the HTTP response has been sent."""
+    from services.drive import get_or_create_folder, move_and_rename_file
+    def _sync():
+        parent_id = settings.drive_filed_root_folder_id
+        for part in [p for p in folder_path.strip("/").split("/") if p]:
+            parent_id = get_or_create_folder(parent_id, part)
+        move_and_rename_file(file_id, filename, parent_id, source_folder)
+    try:
+        await asyncio.to_thread(_sync)
+    except Exception as e:
+        print(f"[filing error] {file_id} → {folder_path}/{filename}: {e}")
+
+
 @app.post("/import/{drive_file_id}/file", response_class=HTMLResponse)
 async def import_file(
     drive_file_id: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     subgroup_id: int = Form(...),
     from_detail: Optional[str] = Form(None),
     override_filename: Optional[str] = Form(None),
@@ -1302,7 +1317,7 @@ async def import_file(
     task_note: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
-    from services.filer import parse_date_from_filename, file_document as _file_document
+    from services.filer import parse_date_from_filename
 
     sub_result = await db.execute(
         select(Subgroup).options(joinedload(Subgroup.group)).where(Subgroup.id == subgroup_id)
@@ -1312,28 +1327,25 @@ async def import_file(
         raise HTTPException(404)
     group = subgroup.group
 
+    from services.filer import build_filing_info
+
     service = get_drive_service()
     drive_file = await asyncio.to_thread(
         lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime,mimeType,parents").execute()
     )
     file_created = datetime.fromisoformat(drive_file["createdTime"].replace("Z", "+00:00")).replace(tzinfo=None)
+    source_folder = (drive_file.get("parents") or [settings.drive_incoming_folder_id])[0]
 
-    # Use the file's actual current parent folder (works for both scanner and phone files)
-    source_folder = (drive_file.get("parents") or [settings.drive_import_folder_id or settings.drive_incoming_folder_id])[0]
     clean_override = override_filename.strip() if override_filename and override_filename.strip() else None
     clean_one_off = item_one_off_description.strip() if item_one_off_description and item_one_off_description.strip() else None
-    try:
-        folder_path, filename, _ = await asyncio.to_thread(
-            _file_document,
-            drive_file, group.name, subgroup.name,
-            subgroup.filename_tag, subgroup.custom_path,
-            group.include_in_path, None, clean_override or clean_one_off,
-            source_folder,
-        )
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
     scan_dt = parse_date_from_filename(drive_file["name"]) or file_created
+    ext = drive_file["name"].rsplit(".", 1)[-1].lower() if "." in drive_file["name"] else "pdf"
+
+    # Compute destination purely in Python — no Drive calls yet
+    folder_path, filename = build_filing_info(
+        group.name, subgroup.name, subgroup.filename_tag, subgroup.custom_path,
+        group.include_in_path, scan_dt, clean_override or clean_one_off, ext,
+    )
 
     # Update existing Document if present (scanner file queued by watcher, or re-filing a phone import)
     existing_result = await db.execute(
@@ -1361,15 +1373,18 @@ async def import_file(
     subgroup.last_used = datetime.utcnow()
     await db.commit()
 
-    # Queue 2Do tasks
+    # Fire Drive move in background — response returns immediately
+    background_tasks.add_task(_do_drive_filing, drive_file_id, folder_path, filename, source_folder)
+
+    # Queue 2Do tasks in background too
     if doc.assigned_rob_task or doc.assigned_beccy_task:
         _title = doc.assigned_task_note or clean_one_off or filename or drive_file["name"]
         _cat = f"{group.name} / {subgroup.name}" if subgroup.name != "/" else group.name
         _date = scan_dt.strftime("%d %B %Y")
         if doc.assigned_rob_task:
-            await _queue_2do_task(doc.id, _title, _cat, "rob", _date)
+            background_tasks.add_task(_queue_2do_task, doc.id, _title, _cat, "rob", _date)
         if doc.assigned_beccy_task:
-            await _queue_2do_task(doc.id, _title, _cat, "beccy", _date)
+            background_tasks.add_task(_queue_2do_task, doc.id, _title, _cat, "beccy", _date)
 
     if from_detail:
         return RedirectResponse("/import", status_code=303)
