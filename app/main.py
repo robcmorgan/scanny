@@ -1685,26 +1685,25 @@ async def _run_relink_scan(old_prefix: str, folder_input: str) -> None:
                 if not target:
                     _relink_state["checked"] += 1
                     continue
-                # Exact match first
-                matches = files_by_name.get(target, [])
-                # Word-overlap fallback: all words from desired must appear in Drive filename
-                if not matches:
-                    matches = [
+                # Exact match first, filter to unclaimed only
+                candidates = [
+                    f for f in files_by_name.get(target, [])
+                    if f not in already_used and f not in assigned_this_run
+                ]
+                # Word-overlap fallback if no unclaimed exact matches
+                if not candidates:
+                    candidates = [
                         fid
                         for name, ids in files_by_name.items()
                         if _word_match(target, name)
                         for fid in ids
+                        if fid not in already_used and fid not in assigned_this_run
                     ]
-                # If multiple matches, drop already-claimed ones — handles Drive's "(1)" duplicates
-                if len(matches) > 1:
-                    matches = [f for f in matches if f not in already_used and f not in assigned_this_run]
-                if len(matches) == 1:
-                    fid = matches[0]
-                    if fid not in already_used and fid not in assigned_this_run:
-                        doc.drive_file_id = fid
-                        doc.broken_link = False
-                        assigned_this_run.add(fid)
-                        _relink_state["linked"] += 1
+                if len(candidates) == 1:
+                    doc.drive_file_id = candidates[0]
+                    doc.broken_link = False
+                    assigned_this_run.add(candidates[0])
+                    _relink_state["linked"] += 1
                 _relink_state["checked"] += 1
 
             await db.commit()
