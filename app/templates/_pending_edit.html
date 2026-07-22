@@ -1,0 +1,173 @@
+{% if scan.subgroup %}
+  {% set _gn = scan.subgroup.group.name %}
+  {% set _sn = scan.subgroup.name %}
+  {% set _key = _gn if _sn == '/' else _gn + '/' + _sn %}
+  {% set _color = chip_color(_key) %}
+  {% set _ft = scan.subgroup.filename_tag or '' %}
+{% else %}
+  {% set _gn = '' %}{% set _sn = '' %}{% set _key = '' %}{% set _color = 'bg-gray-50' %}{% set _ft = '' %}
+{% endif %}
+
+<div class="flex items-center justify-between mb-4">
+  <button
+    hx-get="/pending"
+    hx-target="#pending-sheet-content"
+    hx-swap="innerHTML"
+    class="flex items-center gap-1 text-sm text-gray-400 active:opacity-60 transition-opacity">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+    Queue
+  </button>
+  <span class="text-sm font-semibold text-gray-700">Edit entry</span>
+  <div class="w-16"></div>
+</div>
+
+<form id="pending-edit-form"
+      hx-post="/pending/{{ scan.id }}"
+      hx-target="#pending-sheet-content"
+      hx-swap="innerHTML">
+  <input type="hidden" name="subgroup_id" id="edit-subgroup-id" value="{{ scan.subgroup_id }}">
+
+  <!-- Category chip — tap to change -->
+  <button type="button" id="edit-category-chip"
+    onclick="editOpenCategoryPicker()"
+    class="{{ _color }} w-full rounded-2xl px-4 py-3 text-left flex items-center justify-between mb-4 shadow-sm active:opacity-70 transition-opacity">
+    <div>
+      {% if scan.subgroup and scan.subgroup.name != '/' %}
+      <span class="text-xs opacity-60 block edit-cat-group">{{ _gn }}</span>
+      <span class="font-semibold edit-cat-sub">{{ _sn }}</span>
+      {% elif scan.subgroup %}
+      <span class="hidden edit-cat-group"></span>
+      <span class="font-semibold edit-cat-sub">{{ _gn }}</span>
+      {% else %}
+      <span class="hidden edit-cat-group"></span>
+      <span class="font-semibold edit-cat-sub text-gray-400">Tap to set category</span>
+      {% endif %}
+    </div>
+    <svg class="w-4 h-4 opacity-40 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+    </svg>
+  </button>
+
+  <div class="space-y-3 mb-4">
+
+    <input type="text" name="item_one_off_description" id="edit-one-off"
+      value="{{ scan.item_one_off_description or '' }}"
+      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+      placeholder="One-off description (optional)">
+
+    <textarea name="comment" rows="2"
+      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+      placeholder="Notes">{{ scan.comment or '' }}</textarea>
+
+    <div class="bg-white rounded-2xl px-4 py-3.5 shadow-sm">
+      <div class="flex gap-6 flex-wrap">
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" name="rob_task" value="1" id="edit-rob-todo" onchange="editToggleTodo()"
+            class="w-5 h-5 rounded accent-orange-500" {{ 'checked' if scan.rob_task }}>
+          <span class="text-sm font-medium text-gray-700">Rob to-do</span>
+        </label>
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" name="beccy_task" value="1" id="edit-beccy-todo" onchange="editToggleTodo()"
+            class="w-5 h-5 rounded accent-pink-500" {{ 'checked' if scan.beccy_task }}>
+          <span class="text-sm font-medium text-gray-700">Beccy to-do</span>
+        </label>
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" name="photo_quality" value="1"
+            class="w-5 h-5 rounded accent-sky-500" {{ 'checked' if scan.photo_quality }}>
+          <span class="flex items-center gap-1 text-sm font-medium text-gray-700">
+            <svg class="w-4 h-4 text-sky-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            Photo
+          </span>
+        </label>
+      </div>
+      <div id="edit-todo-note" class="{{ '' if (scan.rob_task or scan.beccy_task) else 'hidden' }} mt-3">
+        <input type="text" name="task_note"
+          value="{{ scan.task_note or '' }}"
+          class="w-full bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          placeholder="What needs doing?">
+      </div>
+    </div>
+
+    <input type="text" name="override_filename" id="edit-override"
+      value="{{ scan.override_filename or '' }}"
+      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm font-mono shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+      placeholder="Filename override (optional)">
+
+    <input type="date" name="date_override" id="edit-date-override"
+      value="{{ scan.date_override.isoformat() if scan.date_override else '' }}"
+      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+
+  </div>
+
+  <button type="submit"
+    class="w-full bg-blue-600 text-white rounded-2xl py-3.5 text-sm font-semibold shadow-sm active:bg-blue-700 transition-colors mb-3">
+    Save changes
+  </button>
+</form>
+
+<button data-pending-id="{{ scan.id }}" data-state="idle" onclick="editConfirmDelete(this)"
+  class="w-full text-red-400 text-sm py-2 active:opacity-60 transition-opacity">
+  <span class="idle-label">Delete entry</span>
+  <span class="confirm-label hidden bg-red-500 text-white px-3 py-1 rounded-full font-medium text-xs">Confirm delete?</span>
+</button>
+
+<script>
+(function() {
+  window.editToggleTodo = function() {
+    var either = document.getElementById('edit-rob-todo').checked || document.getElementById('edit-beccy-todo').checked;
+    document.getElementById('edit-todo-note').classList.toggle('hidden', !either);
+  };
+
+  window.editOpenCategoryPicker = function() {
+    window._selectSubgroupOverride = function(el) {
+      document.getElementById('edit-subgroup-id').value = el.dataset.subgroupId;
+      var gn = el.dataset.groupName, sn = el.dataset.subgroupName;
+      var chip = document.getElementById('edit-category-chip');
+      if (!chip) return;
+      var groupEl = chip.querySelector('.edit-cat-group');
+      var subEl   = chip.querySelector('.edit-cat-sub');
+      if (sn && sn !== '/') {
+        groupEl.textContent = gn; groupEl.classList.remove('hidden');
+        subEl.textContent = sn;
+      } else {
+        groupEl.textContent = ''; groupEl.classList.add('hidden');
+        subEl.textContent = gn;
+      }
+      var colorKey = (sn && sn !== '/') ? gn + '/' + sn : gn;
+      chip.className = chipColor(colorKey) + ' w-full rounded-2xl px-4 py-3 text-left flex items-center justify-between mb-4 shadow-sm active:opacity-70 transition-opacity';
+    };
+    openSearchSheet();
+    setTimeout(function() {
+      var inp = document.getElementById('search-input');
+      if (inp) { inp.value = ''; htmx.trigger(inp, 'input'); inp.focus(); }
+    }, 100);
+  };
+
+  window.editConfirmDelete = function(btn) {
+    if (btn.dataset.state === 'idle') {
+      btn.dataset.state = 'confirm';
+      btn.querySelector('.idle-label').classList.add('hidden');
+      btn.querySelector('.confirm-label').classList.remove('hidden');
+      btn._timer = setTimeout(function() {
+        btn.dataset.state = 'idle';
+        btn.querySelector('.idle-label').classList.remove('hidden');
+        btn.querySelector('.confirm-label').classList.add('hidden');
+      }, 3000);
+    } else {
+      clearTimeout(btn._timer);
+      fetch('/pending/' + btn.dataset.pendingId, { method: 'DELETE' })
+        .then(function() { return fetch('/pending'); })
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+          var el = document.getElementById('pending-sheet-content');
+          if (el) { el.innerHTML = html; htmx.process(el); }
+        });
+    }
+  };
+})();
+</script>

@@ -47,6 +47,7 @@ class PendingScan(Base):
     date_override: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     override_filename: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, filed, error
+    photo_quality: Mapped[bool] = mapped_column(Boolean, default=False)
 
     subgroup: Mapped[Optional["Subgroup"]] = relationship("Subgroup", back_populates="pending_scans")
     document: Mapped[Optional["Document"]] = relationship("Document", back_populates="pending_scan", uselist=False)
@@ -87,6 +88,7 @@ class Document(Base):
     # Status flags
     broken_link: Mapped[bool] = mapped_column(Boolean, default=False)
     conflicted: Mapped[bool] = mapped_column(Boolean, default=False)
+    photo_quality: Mapped[bool] = mapped_column(Boolean, default=False)
 
     group: Mapped[Optional["Group"]] = relationship("Group")
     subgroup: Mapped[Optional["Subgroup"]] = relationship("Subgroup", back_populates="documents")

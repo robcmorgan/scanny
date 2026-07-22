@@ -97,6 +97,7 @@ async def poll_drive():
                         assigned_beccy_task=pending.beccy_task,
                         assigned_task_note=pending.task_note,
                         assigned_date_override=pending.date_override,
+                        photo_quality=pending.photo_quality,
                         desired_folder_location=folder_path,
                         desired_filename=filename,
                         desired_full_path=f"{folder_path}/{filename}",
@@ -109,6 +110,11 @@ async def poll_drive():
                     subgroup.last_used = datetime.utcnow()
                     await db.commit()
                     logger.info(f"Filed {drive_file['name']} → {folder_path}/{filename}")
+                    try:
+                        from main import _fetch_and_cache_thumbnail
+                        await _fetch_and_cache_thumbnail(drive_file["id"])
+                    except Exception:
+                        pass
                 except Exception as e:
                     logger.error(f"Failed to file {drive_file['name']}: {e}")
                     pending.status = "error"

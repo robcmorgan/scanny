@@ -49,9 +49,17 @@
 </div>
 
 {% set _default = is_default_name(doc, doc.subgroup) %}
-<p class="{% if _default %}text-sm text-gray-500{% else %}text-base font-semibold text-gray-900{% endif %} mb-1 break-words">
+<div class="flex items-start gap-2 mb-1">
+<p class="{% if _default %}text-sm text-gray-500{% else %}text-base font-semibold text-gray-900{% endif %} break-words flex-1">
   {{ doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported }}
 </p>
+{% if doc.photo_quality %}
+<svg class="w-4 h-4 text-sky-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+  <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+  <path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+</svg>
+{% endif %}
+</div>
 {% if doc.timestamp_from_filename %}
 <p class="text-xs text-gray-400 mb-2">{{ doc.timestamp_from_filename.strftime('%d %B %Y') }}</p>
 {% endif %}
@@ -153,6 +161,17 @@
           id="edit-beccy-todo" onchange="editToggleTodo()"
           class="w-5 h-5 rounded accent-pink-500">
         <span class="text-sm font-medium text-gray-700">Beccy to-do</span>
+      </label>
+      <label class="flex items-center gap-2.5 cursor-pointer">
+        <input type="checkbox" name="photo_quality" value="1" {% if doc.photo_quality %}checked{% endif %}
+          class="w-5 h-5 rounded accent-sky-500">
+        <span class="flex items-center gap-1 text-sm font-medium text-gray-700">
+          <svg class="w-4 h-4 text-sky-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          Photo
+        </span>
       </label>
     </div>
     <div id="edit-todo-note" class="{% if not doc.assigned_rob_task and not doc.assigned_beccy_task %}hidden {% endif %}mt-3">

@@ -37,7 +37,8 @@
         hx-target="#card-{{ file_id }}"
         hx-swap="outerHTML"
         hx-vals='{"subgroup_id": "{{ sub.id }}"}'
-        class="{{ chip_color(group.name + '/' + sub.name) }} w-full text-left font-semibold rounded-xl px-3 py-3.5 active:scale-95 transition-transform block">
+        class="{{ chip_color(group.name + '/' + sub.name) }} w-full text-left font-semibold rounded-xl pl-5 pr-3 py-3.5 active:scale-95 transition-transform block"
+        style="{{ button_band_style(group.name, group.name + '/' + sub.name) }}">
         {{ sub.name }}
       </button>
       {% endfor %}

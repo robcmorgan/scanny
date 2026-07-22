@@ -22,8 +22,11 @@ def get_credentials() -> Optional[Credentials]:
         return None
     creds = Credentials.from_authorized_user_file(settings.google_token_file, SCOPES)
     if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        _save_credentials(creds)
+        try:
+            creds.refresh(Request())
+            _save_credentials(creds)
+        except Exception:
+            return None
     return creds if creds and creds.valid else None
 
 

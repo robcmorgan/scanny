@@ -21,7 +21,8 @@
     data-filename-tag="{{ sub.filename_tag or '' }}"
     data-include-group="{{ 'true' if sub.group.include_in_path else 'false' }}"
     onclick="selectSubgroupFromEl(this)"
-    class="w-full text-left {{ chip_color(sub.group.name + '/' + sub.name) }} rounded-2xl px-4 py-3.5 shadow-sm active:scale-95 transition-transform"
+    class="w-full text-left {{ chip_color(sub.group.name + '/' + sub.name) }} rounded-2xl pl-6 pr-4 py-3.5 shadow-sm active:scale-95 transition-transform"
+    style="{{ button_band_style(sub.group.name, sub.group.name + '/' + sub.name) }}"
   >
     <span class="text-xs opacity-60 block leading-tight">{{ sub.group.name }}</span>
     <span class="font-semibold block leading-snug">{{ sub.name }}</span>

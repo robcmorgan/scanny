@@ -3,12 +3,14 @@ from typing import Optional
 from datetime import datetime, timezone
 import asyncio
 import re
+import time
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Depends, HTTPException, Form, BackgroundTasks
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, FileResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, or_, and_, func
 from sqlalchemy.orm import joinedload
 
 from database import get_db, init_db, AsyncSessionLocal
@@ -18,10 +20,60 @@ from services.drive import get_flow, save_credentials_from_flow, get_credentials
 from services.watcher import start_scheduler, stop_scheduler
 
 
+THUMB_CACHE = Path(__file__).parent.parent / "data" / "thumbnails"
+THUMB_TTL = 7 * 24 * 3600  # 7 days
+
+
+async def _fetch_and_cache_thumbnail(drive_file_id: str) -> bytes | None:
+    """Fetch thumbnail from Drive, save to disk cache, return bytes. Returns None if unavailable."""
+    import httpx
+    try:
+        service = get_drive_service()
+        meta = await asyncio.to_thread(
+            lambda: service.files().get(fileId=drive_file_id, fields="thumbnailLink").execute()
+        )
+        thumb_url = meta.get("thumbnailLink")
+        if not thumb_url:
+            return None
+        thumb_url = thumb_url.replace("=s220", "=s400")
+        creds = get_credentials()
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(thumb_url, headers={"Authorization": f"Bearer {creds.token}"}, follow_redirects=True)
+        if resp.status_code != 200:
+            return None
+        THUMB_CACHE.mkdir(parents=True, exist_ok=True)
+        (THUMB_CACHE / f"{drive_file_id}.jpg").write_bytes(resp.content)
+        return resp.content
+    except Exception as e:
+        print(f"[thumbnail] fetch error {drive_file_id}: {e}")
+        return None
+
+
+async def _warm_thumbnail_cache():
+    """Background: pre-fetch thumbnails for all linked documents that aren't cached yet."""
+    await asyncio.sleep(5)  # let the server finish starting
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Document.drive_file_id)
+                .where(Document.drive_file_id.isnot(None), Document.broken_link == False)
+            )
+            file_ids = [r[0] for r in result.fetchall()]
+        missing = [fid for fid in file_ids if not (THUMB_CACHE / f"{fid}.jpg").exists()]
+        print(f"[thumbnail cache] {len(file_ids) - len(missing)} cached, warming {len(missing)}")
+        for fid in missing:
+            await _fetch_and_cache_thumbnail(fid)
+            await asyncio.sleep(0.15)  # ~7/sec, gentle on Drive API
+        print(f"[thumbnail cache] warm-up done")
+    except Exception as e:
+        print(f"[thumbnail cache] warm-up error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     start_scheduler()
+    asyncio.create_task(_warm_thumbnail_cache())
     yield
     stop_scheduler()
 
@@ -66,13 +118,69 @@ _CHIP_PALETTE = [
     "bg-indigo-300 text-indigo-900", "bg-purple-400 text-purple-900",
 ]
 
+_RESERVED_CHIP_HUES = [
+    ("violet", "violet"),
+    ("alice",  "fuchsia"),
+    ("beccy",  "teal"),
+    ("rob",    "indigo"),
+]
+
+_RESERVED_SHADES = [100, 200, 300, 400]
+
 def _chip_color(key: str) -> str:
+    kl = key.lower()
+    for word, hue in _RESERVED_CHIP_HUES:
+        if re.search(r'\b' + word + r'\b', kl):
+            h = 0
+            for c in key:
+                h = (h * 31 + ord(c)) & 0x7FFFFFFF
+            shade = _RESERVED_SHADES[h % len(_RESERVED_SHADES)]
+            return f"bg-{hue}-{shade} text-{hue}-900"
     h = 0
     for c in key:
         h = (h * 31 + ord(c)) & 0x7FFFFFFF
     return _CHIP_PALETTE[h % len(_CHIP_PALETTE)]
 
+_TW_HEX = {
+    "blue":    {100:"#dbeafe",200:"#bfdbfe",300:"#93c5fd",400:"#60a5fa"},
+    "orange":  {100:"#ffedd5",200:"#fed7aa",300:"#fdba74",400:"#fb923c"},
+    "green":   {100:"#dcfce7",200:"#bbf7d0",300:"#86efac",400:"#4ade80"},
+    "fuchsia": {100:"#fdf4ff",200:"#fae8ff",300:"#f0abfc",400:"#e879f9"},
+    "amber":   {100:"#fef3c7",200:"#fde68a",300:"#fcd34d",400:"#fbbf24"},
+    "sky":     {100:"#e0f2fe",200:"#bae6fd",300:"#7dd3fc",400:"#38bdf8"},
+    "red":     {100:"#fee2e2",200:"#fecaca",300:"#fca5a5",400:"#f87171"},
+    "lime":    {100:"#f7fee7",200:"#d9f99d",300:"#bef264",400:"#a3e635"},
+    "violet":  {100:"#ede9fe",200:"#ddd6fe",300:"#c4b5fd",400:"#a78bfa"},
+    "yellow":  {100:"#fef9c3",200:"#fef08a",300:"#fde047",400:"#facc15"},
+    "teal":    {100:"#ccfbf1",200:"#99f6e4",300:"#5eead4",400:"#2dd4bf"},
+    "pink":    {100:"#fce7f3",200:"#fbcfe8",300:"#f9a8d4",400:"#f472b6"},
+    "rose":    {100:"#ffe4e6",200:"#fecdd3",300:"#fda4af",400:"#fb7185"},
+    "emerald": {100:"#d1fae5",200:"#a7f3d0",300:"#6ee7b7",400:"#34d399"},
+    "cyan":    {100:"#cffafe",200:"#a5f3fc",300:"#67e8f9",400:"#22d3ee"},
+    "indigo":  {100:"#e0e7ff",200:"#c7d2fe",300:"#a5b4fc",400:"#818cf8"},
+    "purple":  {100:"#f3e8ff",200:"#e9d5ff",300:"#d8b4fe",400:"#c084fc"},
+}
+
+def _chip_color_hex(key: str) -> str:
+    bg = _chip_color(key).split()[0]          # "bg-violet-300"
+    parts = bg.split("-")
+    hue = "-".join(parts[1:-1])               # "violet"
+    shade = int(parts[-1])                    # 300
+    return _TW_HEX.get(hue, {}).get(shade, "#e5e7eb")
+
+def _button_band_style(group_key: str, sub_key: str) -> str:
+    band = _chip_color_hex(group_key)
+    bg   = _chip_color_hex(sub_key)
+    return (
+        f"background:linear-gradient(to right,"
+        f"{band} 1rem,"
+        f"rgba(0,0,0,0.2) 1rem,rgba(0,0,0,0.2) calc(1rem + 2px),"
+        f"{bg} calc(1rem + 2px))"
+    )
+
 templates.env.globals["chip_color"] = _chip_color
+templates.env.globals["chip_color_hex"] = _chip_color_hex
+templates.env.globals["button_band_style"] = _button_band_style
 
 
 def _is_default_name(doc, subgroup=None) -> bool:
@@ -149,21 +257,27 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
             seen_ids.add(sub.id)
             quick_pairs.append(sub)
 
-    # Most recent pending scan (just for the "last added" indicator)
-    result = await db.execute(
+    # Most recent pending scan + count (for the queue row)
+    last_result = await db.execute(
         select(PendingScan)
         .options(joinedload(PendingScan.subgroup).joinedload(Subgroup.group))
         .where(PendingScan.status == "pending")
         .order_by(desc(PendingScan.created_at))
         .limit(1)
     )
-    pending_scans = result.scalars().all()
+    count_result = await db.execute(
+        select(func.count(PendingScan.id))
+        .where(PendingScan.status == "pending")
+    )
+    pending_scans = last_result.scalars().all()
+    pending_count = count_result.scalar() or 0
 
     return templates.TemplateResponse("scan.html", {
         "request": request,
         "quick_groups": quick_groups,
         "quick_pairs": quick_pairs,
         "pending_scans": pending_scans,
+        "pending_count": pending_count,
         "drive_authed": get_credentials() is not None,
     })
 
@@ -205,7 +319,6 @@ async def _subgroup_popup_ctx(group_id: int, db) -> dict:
         select(Subgroup)
         .where(Subgroup.group_id == group_id, Subgroup.name != "/")
         .order_by(desc(Subgroup.last_used), Subgroup.name)
-        .limit(5)
     )
     all_subs = await db.execute(
         select(Subgroup)
@@ -245,18 +358,99 @@ async def create_subgroup_popup(
 
 @app.get("/pending", response_class=HTMLResponse)
 async def list_pending(request: Request, db: AsyncSession = Depends(get_db)):
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=3)
+    result = await db.execute(
+        select(PendingScan)
+        .options(
+            joinedload(PendingScan.subgroup).joinedload(Subgroup.group),
+            joinedload(PendingScan.document),
+        )
+        .where(or_(
+            PendingScan.status == "pending",
+            and_(PendingScan.status == "filed", PendingScan.modified_at >= cutoff),
+        ))
+        .order_by(desc(PendingScan.created_at))
+        .limit(30)
+    )
+    scans = result.scalars().all()
+    return templates.TemplateResponse("_pending_list.html", {
+        "request": request,
+        "scans": scans,
+    })
+
+
+@app.get("/pending/{pending_id}/edit", response_class=HTMLResponse)
+async def edit_pending_form(pending_id: int, request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(PendingScan)
         .options(joinedload(PendingScan.subgroup).joinedload(Subgroup.group))
-        .where(PendingScan.status == "pending")
-        .order_by(desc(PendingScan.created_at))
-        .limit(20)
+        .where(PendingScan.id == pending_id)
     )
-    pending_scans = result.scalars().all()
-    return templates.TemplateResponse("_pending_list.html", {
-        "request": request,
-        "pending_scans": pending_scans,
-    })
+    scan = result.scalar_one_or_none()
+    if not scan:
+        raise HTTPException(404)
+    return templates.TemplateResponse("_pending_edit.html", {"request": request, "scan": scan})
+
+
+@app.post("/pending/{pending_id}", response_class=HTMLResponse)
+async def update_pending(
+    pending_id: int,
+    request: Request,
+    subgroup_id: int = Form(...),
+    item_one_off_description: Optional[str] = Form(None),
+    rob_task: Optional[str] = Form(None),
+    beccy_task: Optional[str] = Form(None),
+    task_note: Optional[str] = Form(None),
+    comment: Optional[str] = Form(None),
+    date_override: Optional[str] = Form(None),
+    override_filename: Optional[str] = Form(None),
+    photo_quality: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    p = await db.get(PendingScan, pending_id)
+    if not p:
+        raise HTTPException(404)
+
+    def _clean(s: Optional[str]) -> Optional[str]:
+        return re.sub(r'[\x00-\x1f\x7f]', '', s).strip() or None if s else None
+
+    p.subgroup_id = subgroup_id
+    p.item_one_off_description = _clean(item_one_off_description)
+    p.rob_task = bool(rob_task)
+    p.beccy_task = bool(beccy_task)
+    p.task_note = _clean(task_note)
+    p.comment = _clean(comment)
+    p.override_filename = _clean(override_filename)
+    p.photo_quality = bool(photo_quality)
+    if date_override:
+        try:
+            from datetime import date as _date
+            p.date_override = _date.fromisoformat(date_override)
+        except ValueError:
+            p.date_override = None
+    else:
+        p.date_override = None
+
+    await db.commit()
+
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=3)
+    result = await db.execute(
+        select(PendingScan)
+        .options(
+            joinedload(PendingScan.subgroup).joinedload(Subgroup.group),
+            joinedload(PendingScan.document),
+        )
+        .where(or_(
+            PendingScan.status == "pending",
+            and_(PendingScan.status == "filed", PendingScan.modified_at >= cutoff),
+        ))
+        .order_by(desc(PendingScan.created_at))
+        .limit(30)
+    )
+    scans = result.scalars().all()
+    return templates.TemplateResponse("_pending_list.html", {"request": request, "scans": scans})
 
 
 def _token_match(sub: "Subgroup", q: str) -> bool:
@@ -378,6 +572,7 @@ async def create_pending(
     comment: Optional[str] = Form(None),
     date_override: Optional[str] = Form(None),
     override_filename: Optional[str] = Form(None),
+    photo_quality: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     parsed_date = None
@@ -401,6 +596,7 @@ async def create_pending(
         comment=_clean(comment),
         date_override=parsed_date,
         override_filename=_clean(override_filename),
+        photo_quality=bool(photo_quality),
     )
     db.add(pending)
 
@@ -734,37 +930,16 @@ async def library_subgroup(group_id: int, subgroup_id: int, request: Request, db
 
 @app.get("/thumbnail/{document_id}")
 async def thumbnail(document_id: int, db: AsyncSession = Depends(get_db)):
-    import httpx, traceback
     doc = await db.get(Document, document_id)
     if not doc or not doc.drive_file_id:
         raise HTTPException(404)
-    try:
-        service = get_drive_service()
-        meta = service.files().get(
-            fileId=doc.drive_file_id,
-            fields="thumbnailLink"
-        ).execute()
-        thumb_url = meta.get("thumbnailLink")
-        if not thumb_url:
-            raise HTTPException(404)
-        thumb_url = thumb_url.replace("=s220", "=s400")
-        creds = get_credentials()
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                thumb_url,
-                headers={"Authorization": f"Bearer {creds.token}"},
-                follow_redirects=True,
-            )
-        return StreamingResponse(
-            iter([resp.content]),
-            media_type=resp.headers.get("content-type", "image/jpeg"),
-            headers={"Cache-Control": "no-store"},
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Thumbnail error doc={document_id}: {e}\n{traceback.format_exc()}")
-        raise HTTPException(502, str(e))
+    cache_path = THUMB_CACHE / f"{doc.drive_file_id}.jpg"
+    if cache_path.exists() and (time.time() - cache_path.stat().st_mtime) < THUMB_TTL:
+        return FileResponse(cache_path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+    data = await _fetch_and_cache_thumbnail(doc.drive_file_id)
+    if not data:
+        raise HTTPException(404)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
 @app.get("/document/{document_id}/file")
@@ -885,6 +1060,7 @@ async def update_document(
     rob_task: Optional[str] = Form(None),
     beccy_task: Optional[str] = Form(None),
     task_note: str = Form(""),
+    photo_quality: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -902,6 +1078,7 @@ async def update_document(
     doc.assigned_rob_task = rob_task == "1"
     doc.assigned_beccy_task = beccy_task == "1"
     doc.assigned_task_note = task_note.strip() or None
+    doc.photo_quality = bool(photo_quality)
     await db.commit()
     # Queue 2Do tasks for newly-checked boxes only
     title = doc.assigned_task_note or doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported or "Scanny document"
@@ -1221,24 +1398,13 @@ async def import_view(drive_file_id: str):
 
 @app.get("/import/thumbnail/{drive_file_id}")
 async def import_thumbnail(drive_file_id: str):
-    import httpx
-    try:
-        service = get_drive_service()
-        meta = await asyncio.to_thread(
-            lambda: service.files().get(fileId=drive_file_id, fields="thumbnailLink").execute()
-        )
-        thumb_url = meta.get("thumbnailLink")
-        if not thumb_url:
-            raise HTTPException(404)
-        thumb_url = thumb_url.replace("=s220", "=s400")
-        creds = get_credentials()
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(thumb_url, headers={"Authorization": f"Bearer {creds.token}"}, follow_redirects=True)
-        return StreamingResponse(iter([resp.content]), media_type=resp.headers.get("content-type", "image/jpeg"), headers={"Cache-Control": "no-store"})
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(502, str(e))
+    cache_path = THUMB_CACHE / f"{drive_file_id}.jpg"
+    if cache_path.exists() and (time.time() - cache_path.stat().st_mtime) < THUMB_TTL:
+        return FileResponse(cache_path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+    data = await _fetch_and_cache_thumbnail(drive_file_id)
+    if not data:
+        raise HTTPException(404)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
 @app.get("/import/{drive_file_id}/card", response_class=HTMLResponse)
@@ -1323,6 +1489,7 @@ async def import_file(
     source_folder_id: Optional[str] = Form(None),
     scan_date_str: Optional[str] = Form(None),
     scan_time_str: Optional[str] = Form(None),
+    photo_quality: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     from services.filer import parse_date_from_filename, build_filing_info
@@ -1384,12 +1551,14 @@ async def import_file(
     doc.assigned_rob_task = bool(rob_task)
     doc.assigned_beccy_task = bool(beccy_task)
     doc.assigned_task_note = task_note.strip() if task_note and task_note.strip() else None
+    doc.photo_quality = bool(photo_quality)
     subgroup.use_count += 1
     subgroup.last_used = datetime.utcnow()
     await db.commit()
 
-    # Fire Drive move in background — response returns immediately
+    # Fire Drive move + thumbnail pre-cache in background — response returns immediately
     background_tasks.add_task(_do_drive_filing, drive_file_id, folder_path, filename, source_folder)
+    background_tasks.add_task(_fetch_and_cache_thumbnail, drive_file_id)
 
     # Queue 2Do tasks in background too
     if doc.assigned_rob_task or doc.assigned_beccy_task:
