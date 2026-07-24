@@ -12,15 +12,14 @@
   Phone
 </a>
 
-<!-- Mobile: full-width thumbnail with scrollable container -->
+<!-- Mobile: full document viewer (thumbnails only ever show page 1, hiding extra pages) -->
 <div class="sm:hidden mb-3">
-  <a href="/import/{{ file.id }}/view" target="_blank"
-     class="block rounded-2xl overflow-hidden bg-gray-100 active:opacity-70"
-     style="max-height: 50vh; overflow-y: auto;">
-    <img src="/import/thumbnail/{{ file.id }}"
-         class="w-full"
-         onerror="this.style.display='none'">
-  </a>
+  <div class="rounded-2xl overflow-hidden bg-gray-100" style="height: 50vh;">
+    <iframe src="/import/{{ file.id }}/view?max_pages=4#toolbar=0"
+            class="w-full h-full border-0"
+            style="color-scheme: light"
+            title="{{ file.name }}"></iframe>
+  </div>
   <div class="flex items-center gap-2 mt-2 px-1">
     <p class="text-sm text-gray-600 truncate flex-1">{{ file.name }}</p>
     <p class="text-xs text-gray-400 shrink-0">{{ file.createdTime[:10] }}</p>

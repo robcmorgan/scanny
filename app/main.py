@@ -1375,8 +1375,23 @@ async def import_confirm(
     })
 
 
+def _truncate_pdf(data: bytes, max_pages: int) -> bytes:
+    """Return a copy of the PDF with only the first max_pages pages, to cap what mobile has to download."""
+    import io
+    from pypdf import PdfReader, PdfWriter
+    reader = PdfReader(io.BytesIO(data))
+    if len(reader.pages) <= max_pages:
+        return data
+    writer = PdfWriter()
+    for page in reader.pages[:max_pages]:
+        writer.add_page(page)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
 @app.get("/import/{drive_file_id}/view")
-async def import_view(drive_file_id: str):
+async def import_view(drive_file_id: str, max_pages: Optional[int] = None):
     import httpx
     try:
         creds = get_credentials()
@@ -1385,9 +1400,16 @@ async def import_view(drive_file_id: str):
             resp = await client.get(url, headers={"Authorization": f"Bearer {creds.token}"}, follow_redirects=True)
         if resp.status_code == 404:
             raise HTTPException(404)
+        content_type = resp.headers.get("content-type", "application/pdf")
+        content = resp.content
+        if max_pages and "pdf" in content_type.lower():
+            try:
+                content = await asyncio.to_thread(_truncate_pdf, content, max_pages)
+            except Exception:
+                pass  # fall back to serving the full document if truncation fails
         return StreamingResponse(
-            iter([resp.content]),
-            media_type=resp.headers.get("content-type", "application/pdf"),
+            iter([content]),
+            media_type=content_type,
             headers={"Cache-Control": "no-store", "Content-Disposition": "inline"},
         )
     except HTTPException:
