@@ -1375,38 +1375,66 @@ async def import_confirm(
     })
 
 
-def _truncate_pdf(data: bytes, max_pages: int) -> bytes:
-    """Return a copy of the PDF with only the first max_pages pages, to cap what mobile has to download."""
+def _render_pdf_preview(data: bytes, max_pages: int, dpi: int = 110) -> bytes:
+    """Rasterize the first max_pages pages of a PDF and stack them into one tall JPEG.
+
+    Mobile browsers (notably iOS Safari) won't render a PDF inline inside an
+    iframe — they show a static preview card with an "Open" button instead of
+    the document. A plain <img> has no such restriction, so we render the
+    pages ourselves rather than relying on the browser's native PDF viewer.
+    """
     import io
-    from pypdf import PdfReader, PdfWriter
-    reader = PdfReader(io.BytesIO(data))
-    if len(reader.pages) <= max_pages:
-        return data
-    writer = PdfWriter()
-    for page in reader.pages[:max_pages]:
-        writer.add_page(page)
+    import fitz  # pymupdf
+    from PIL import Image
+    doc = fitz.open(stream=data, filetype="pdf")
+    n = min(max_pages, len(doc))
+    pages = []
+    for i in range(n):
+        pix = doc[i].get_pixmap(dpi=dpi)
+        pages.append(Image.frombytes("RGB", [pix.width, pix.height], pix.samples))
+    gap = 12
+    width = max(p.width for p in pages)
+    height = sum(p.height for p in pages) + gap * (len(pages) - 1)
+    canvas = Image.new("RGB", (width, height), "white")
+    y = 0
+    for p in pages:
+        canvas.paste(p, (0, y))
+        y += p.height + gap
     buf = io.BytesIO()
-    writer.write(buf)
+    canvas.save(buf, format="JPEG", quality=82)
     return buf.getvalue()
 
 
-@app.get("/import/{drive_file_id}/view")
-async def import_view(drive_file_id: str, max_pages: Optional[int] = None):
+async def _fetch_drive_media(drive_file_id: str) -> tuple[bytes, str]:
     import httpx
+    creds = get_credentials()
+    url = f"https://www.googleapis.com/drive/v3/files/{drive_file_id}?alt=media"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {creds.token}"}, follow_redirects=True)
+    if resp.status_code == 404:
+        raise HTTPException(404)
+    return resp.content, resp.headers.get("content-type", "application/pdf")
+
+
+@app.get("/import/{drive_file_id}/preview-image")
+async def import_preview_image(drive_file_id: str, max_pages: int = 4):
     try:
-        creds = get_credentials()
-        url = f"https://www.googleapis.com/drive/v3/files/{drive_file_id}?alt=media"
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, headers={"Authorization": f"Bearer {creds.token}"}, follow_redirects=True)
-        if resp.status_code == 404:
-            raise HTTPException(404)
-        content_type = resp.headers.get("content-type", "application/pdf")
-        content = resp.content
-        if max_pages and "pdf" in content_type.lower():
-            try:
-                content = await asyncio.to_thread(_truncate_pdf, content, max_pages)
-            except Exception:
-                pass  # fall back to serving the full document if truncation fails
+        content, content_type = await _fetch_drive_media(drive_file_id)
+        if "pdf" not in content_type.lower():
+            # Not a PDF (e.g. a plain photo scan) — nothing to paginate, pass it through as-is.
+            return Response(content, media_type=content_type, headers={"Cache-Control": "no-store"})
+        image = await asyncio.to_thread(_render_pdf_preview, content, max_pages)
+        return Response(image, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/import/{drive_file_id}/view")
+async def import_view(drive_file_id: str):
+    try:
+        content, content_type = await _fetch_drive_media(drive_file_id)
         return StreamingResponse(
             iter([content]),
             media_type=content_type,

@@ -12,13 +12,13 @@
   Phone
 </a>
 
-<!-- Mobile: full document viewer (thumbnails only ever show page 1, hiding extra pages) -->
+<!-- Mobile: rendered preview of the first pages (iOS Safari won't show a PDF inline in an iframe —
+     it just displays a static "Open" card — so this is rasterized server-side into a plain image). -->
 <div class="sm:hidden mb-3">
-  <div class="rounded-2xl overflow-hidden bg-gray-100" style="height: 50vh;">
-    <iframe src="/import/{{ file.id }}/view?max_pages=4#toolbar=0"
-            class="w-full h-full border-0"
-            style="color-scheme: light"
-            title="{{ file.name }}"></iframe>
+  <div class="rounded-2xl overflow-hidden bg-gray-100" style="max-height: 60vh; overflow-y: auto;">
+    <img src="/import/{{ file.id }}/preview-image?max_pages=4"
+         class="w-full block"
+         onerror="this.style.display='none'">
   </div>
   <div class="flex items-center gap-2 mt-2 px-1">
     <p class="text-sm text-gray-600 truncate flex-1">{{ file.name }}</p>
