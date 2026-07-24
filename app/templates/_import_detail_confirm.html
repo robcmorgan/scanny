@@ -30,7 +30,6 @@
   <input type="hidden" name="from_detail" value="1">
   <input type="hidden" name="drive_filename" value="{{ drive_filename }}">
   <input type="hidden" name="source_folder_id" value="{{ source_folder_id }}">
-  <input type="hidden" name="scan_date_str" value="{{ scan_date_str }}">
   <input type="hidden" name="scan_time_str" value="{{ scan_time_str }}">
 
   <!-- Filename preview -->
@@ -48,10 +47,14 @@
         class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
         placeholder="One-off description (optional)">
       {% if scan_date_str %}
-      <label class="flex items-center gap-2 mt-1.5 px-1 cursor-pointer select-none">
-        <input type="checkbox" id="import-date-chk" class="w-4 h-4 accent-blue-500">
-        <span class="text-xs text-gray-500">Add date to filename</span>
-      </label>
+      <div class="flex items-center gap-2 mt-1.5 px-1">
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" id="import-date-chk" class="w-4 h-4 accent-blue-500">
+          <span class="text-xs text-gray-500">Add date to filename</span>
+        </label>
+        <input type="date" name="scan_date_str" id="import-scan-date" value="{{ scan_date_str }}" required
+          class="ml-auto text-xs text-gray-500 bg-transparent border-0 p-0 focus:outline-none focus:ring-0">
+      </div>
       {% endif %}
     </div>
 
@@ -121,7 +124,7 @@
   // Preserve typed notes/override/tasks across group/subgroup navigation (X cancel + re-pick),
   // since each pick re-renders this partial from scratch and would otherwise wipe them out.
   var storageKey = 'scanny-import-draft:' + fileId;
-  var draftTextFields = ['item_one_off_description', 'comment', 'override_filename', 'task_note'];
+  var draftTextFields = ['item_one_off_description', 'comment', 'override_filename', 'task_note', 'scan_date_str'];
   var draftCheckboxes = ['rob_task', 'beccy_task', 'photo_quality'];
   var form = document.getElementById('import-confirm-form');
 
@@ -178,8 +181,9 @@
       preview.textContent = override.replace(/\.[^.]+$/, '') + '.' + ext;
       return;
     }
+    var dateInp = document.getElementById('import-scan-date');
     var label = filenameTag || subgroupLabel;
-    preview.textContent = scanDate + ' ' + label + ' scanned papers-' + scanTime + '.' + ext;
+    preview.textContent = (dateInp ? dateInp.value : scanDate) + ' ' + label + ' scanned papers-' + scanTime + '.' + ext;
   };
 
   window.importToggleTodo = function() {
@@ -189,7 +193,9 @@
 
   importUpdatePreview();
   importToggleTodo();
-  datePrefix('import-date-chk', 'import-one-off', scanDate);
+  datePrefix('import-date-chk', 'import-one-off', 'import-scan-date');
+  var scanDateInp = document.getElementById('import-scan-date');
+  if (scanDateInp) scanDateInp.addEventListener('input', importUpdatePreview);
   if (document.getElementById('import-one-off').value) importSyncOneOff();
 
   // Focus the save button so Enter submits immediately

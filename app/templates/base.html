@@ -158,18 +158,20 @@
   });
 }());
 
-function datePrefix(checkId, inputId, date) {
+function datePrefix(checkId, inputId, dateInputId) {
   var chk = document.getElementById(checkId);
   var inp = document.getElementById(inputId);
-  if (!chk || !inp) return;
-  chk.addEventListener('change', function() {
-    var prefix = date + ' ';
-    if (chk.checked && !inp.value.startsWith(prefix)) {
-      inp.value = prefix + inp.value;
-    } else if (!chk.checked && inp.value.startsWith(prefix)) {
-      inp.value = inp.value.slice(prefix.length);
-    }
+  var dateInp = document.getElementById(dateInputId);
+  if (!chk || !inp || !dateInp) return;
+  var stalePrefix = /^\d{4}-\d{2}-\d{2} /;
+  function apply() {
+    var withoutDate = inp.value.replace(stalePrefix, '');
+    inp.value = chk.checked ? (dateInp.value + ' ' + withoutDate) : withoutDate;
     inp.dispatchEvent(new Event('input'));
+  }
+  chk.addEventListener('change', apply);
+  dateInp.addEventListener('change', function() {
+    if (chk.checked) apply();
   });
 }
 

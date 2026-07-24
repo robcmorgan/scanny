@@ -199,7 +199,8 @@
 {% endif %}
 
 {% if scan_date_str %}
-<script>datePrefix('doc-date-chk', 'doc-desc', {{ scan_date_str | tojson }});</script>
+<input type="hidden" id="doc-scan-date" value="{{ scan_date_str }}">
+<script>datePrefix('doc-date-chk', 'doc-desc', 'doc-scan-date');</script>
 {% endif %}
 
 </div><!-- end sm:w-80 right panel -->
