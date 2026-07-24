@@ -32,6 +32,24 @@
 </div>
 
 
+<!-- Service -->
+<div class="bg-white border border-gray-200 rounded-xl p-4 mb-6 shadow-sm">
+  <div class="flex justify-between items-center">
+    <div>
+      <p class="font-semibold text-gray-800">Service</p>
+      <p class="text-sm text-gray-400 mt-0.5">Restart to pick up code changes</p>
+    </div>
+    <button
+      hx-post="/admin/restart"
+      hx-target="#restart-status"
+      hx-swap="innerHTML"
+      class="bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-medium active:bg-gray-700 transition-colors">
+      Restart
+    </button>
+  </div>
+  <div id="restart-status" class="mt-2 text-xs text-gray-400"></div>
+</div>
+
 <!-- Groups management -->
 <details class="mb-6">
   <summary class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3 cursor-pointer hover:text-gray-600">Groups &amp; Subgroups</summary>

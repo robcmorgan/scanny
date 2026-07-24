@@ -2214,6 +2214,22 @@ async def broken_links_status(request: Request, db: AsyncSession = Depends(get_d
     })
 
 
+@app.post("/admin/restart", response_class=HTMLResponse)
+async def admin_restart():
+    import subprocess
+    subprocess.Popen(
+        "sleep 2 && sudo -n /bin/systemctl restart scanny.service",
+        shell=True,
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return HTMLResponse(
+        '<span id="restart-status" class="text-amber-600">Restarting&hellip;</span>'
+        '<script>setTimeout(()=>location.reload(),5000)</script>'
+    )
+
+
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, db: AsyncSession = Depends(get_db)):
     from config import settings as app_settings
