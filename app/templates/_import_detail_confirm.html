@@ -114,8 +114,54 @@
   var subgroupLabel = {{ subgroup_label | tojson }};
   var scanDate      = {{ scan_date_str | tojson }};
   var scanTime      = {{ scan_time_str | tojson }};
+  var fileId        = {{ file_id | tojson }};
   var ext = driveFilename.split('.').pop() || 'pdf';
   window.importOverrideManual = false;
+
+  // Preserve typed notes/override/tasks across group/subgroup navigation (X cancel + re-pick),
+  // since each pick re-renders this partial from scratch and would otherwise wipe them out.
+  var storageKey = 'scanny-import-draft:' + fileId;
+  var draftTextFields = ['item_one_off_description', 'comment', 'override_filename', 'task_note'];
+  var draftCheckboxes = ['rob_task', 'beccy_task', 'photo_quality'];
+  var form = document.getElementById('import-confirm-form');
+
+  function saveDraft() {
+    var data = {};
+    draftTextFields.forEach(function(name) {
+      var el = form.querySelector('[name="' + name + '"]');
+      if (el) data[name] = el.value;
+    });
+    draftCheckboxes.forEach(function(name) {
+      var el = form.querySelector('[name="' + name + '"]');
+      if (el) data[name] = el.checked;
+    });
+    sessionStorage.setItem(storageKey, JSON.stringify(data));
+  }
+
+  function restoreDraft() {
+    var raw = sessionStorage.getItem(storageKey);
+    if (!raw) return;
+    var data;
+    try { data = JSON.parse(raw); } catch (e) { return; }
+    draftTextFields.forEach(function(name) {
+      if (data[name] === undefined) return;
+      var el = form.querySelector('[name="' + name + '"]');
+      if (el) el.value = data[name];
+    });
+    draftCheckboxes.forEach(function(name) {
+      if (data[name] === undefined) return;
+      var el = form.querySelector('[name="' + name + '"]');
+      if (el) el.checked = data[name];
+    });
+    if (data.override_filename) window.importOverrideManual = true;
+  }
+
+  restoreDraft();
+  form.addEventListener('input', saveDraft);
+  form.addEventListener('change', saveDraft);
+  form.addEventListener('submit', function() {
+    sessionStorage.removeItem(storageKey);
+  });
 
   window.importSyncOneOff = function() {
     if (!importOverrideManual) {
@@ -142,6 +188,7 @@
   };
 
   importUpdatePreview();
+  importToggleTodo();
   datePrefix('import-date-chk', 'import-one-off', scanDate);
   if (document.getElementById('import-one-off').value) importSyncOneOff();
 
