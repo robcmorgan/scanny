@@ -35,6 +35,15 @@
 </div>
 {% endif %}
 
+<!-- Bulk action bar: shown once at least one file is selected -->
+<div id="import-bulk-bar" class="hidden fixed left-0 right-0 z-20 px-4" style="bottom: 5rem;">
+  <div class="max-w-xl mx-auto bg-gray-900 text-white rounded-2xl shadow-lg px-4 py-3 flex items-center justify-between gap-3">
+    <span id="import-bulk-count" class="text-sm font-medium"></span>
+    <button type="button" onclick="applyImportSelection()"
+      class="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-semibold shrink-0 active:bg-blue-700">Apply category…</button>
+  </div>
+</div>
+
 <script>
 window.importSelectMode = false;
 window.importSelected = new Set();
@@ -73,10 +82,19 @@ function toggleImportSelectMode() {
 }
 
 function updateImportSelectedCount() {
-  var el = document.getElementById('import-selected-count');
-  if (!el) return;
+  var countEl = document.getElementById('import-selected-count');
+  var bar = document.getElementById('import-bulk-bar');
+  var barCount = document.getElementById('import-bulk-count');
   var n = window.importSelected.size;
-  el.textContent = n > 0 ? n + ' selected' : '';
+  if (countEl) countEl.textContent = n > 0 ? n + ' selected' : '';
+  if (bar) bar.classList.toggle('hidden', n === 0);
+  if (barCount) barCount.textContent = n + ' file' + (n === 1 ? '' : 's') + ' selected';
+}
+
+function applyImportSelection() {
+  if (window.importSelected.size === 0) return;
+  var ids = Array.from(window.importSelected).join(',');
+  window.location.href = '/import/bulk?ids=' + encodeURIComponent(ids);
 }
 </script>
 

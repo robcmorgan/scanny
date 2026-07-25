@@ -1227,6 +1227,169 @@ async def import_page(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
+@app.get("/import/bulk", response_class=HTMLResponse)
+async def import_bulk_page(request: Request, ids: str, db: AsyncSession = Depends(get_db)):
+    file_ids = [i for i in ids.split(",") if i]
+    if not file_ids:
+        raise HTTPException(400, "No files selected")
+    groups_result = await db.execute(select(Group).order_by(Group.name))
+    return templates.TemplateResponse("import_bulk.html", {
+        "request": request,
+        "file_ids": file_ids,
+        "groups": groups_result.scalars().all(),
+    })
+
+
+@app.get("/import/bulk/subgroups", response_class=HTMLResponse)
+async def import_bulk_subgroups(request: Request, group_id: int, db: AsyncSession = Depends(get_db)):
+    subs_result = await db.execute(
+        select(Subgroup).where(Subgroup.group_id == group_id).order_by(Subgroup.name)
+    )
+    return templates.TemplateResponse("_bulk_subgroup_select.html", {
+        "request": request,
+        "subgroups": subs_result.scalars().all(),
+    })
+
+
+async def _do_bulk_filing(
+    file_ids: list[str], subgroup_id: int,
+    override_filename: Optional[str], item_one_off_description: Optional[str],
+    comment: Optional[str], rob_task: bool, beccy_task: bool,
+    task_note: Optional[str], photo_quality: bool,
+):
+    """Sequentially file a batch of Drive files into the same subgroup.
+
+    Sequential (not concurrent) on purpose: dedupe_filename() needs to see each
+    prior file's assigned name before picking the next one, or two files sharing
+    the same one-off name would race and both land on "Foo.pdf".
+    """
+    from services.filer import parse_date_from_filename, build_filing_info, dedupe_filename
+    from services.drive import get_or_create_folder, move_and_rename_file, list_files_in_folder
+
+    async with AsyncSessionLocal() as db:
+        sub_result = await db.execute(
+            select(Subgroup).options(joinedload(Subgroup.group)).where(Subgroup.id == subgroup_id)
+        )
+        subgroup = sub_result.scalar_one_or_none()
+    if not subgroup:
+        print(f"[bulk filing error] subgroup {subgroup_id} not found")
+        return
+    group = subgroup.group
+
+    def _resolve_folder():
+        folder_path = subgroup.custom_path.rstrip("/") if subgroup.custom_path else f"/{group.name}/{subgroup.name}"
+        parent_id = settings.drive_filed_root_folder_id
+        for part in [p for p in folder_path.strip("/").split("/") if p]:
+            parent_id = get_or_create_folder(parent_id, part)
+        existing_names = {f["name"] for f in list_files_in_folder(parent_id)}
+        return folder_path, parent_id, existing_names
+
+    try:
+        folder_path, parent_id, existing_names = await asyncio.to_thread(_resolve_folder)
+    except Exception as e:
+        print(f"[bulk filing error] resolving destination folder: {e}")
+        return
+
+    service = get_drive_service()
+
+    for file_id in file_ids:
+        try:
+            drive_file = await asyncio.to_thread(
+                lambda: service.files().get(fileId=file_id, fields="id,name,createdTime,parents").execute()
+            )
+            fname = drive_file["name"]
+            source_folder = (drive_file.get("parents") or [settings.drive_incoming_folder_id])[0]
+            file_created = datetime.fromisoformat(drive_file["createdTime"].replace("Z", "+00:00")).replace(tzinfo=None)
+            scan_dt = parse_date_from_filename(fname) or file_created
+            ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else "pdf"
+
+            _, filename = build_filing_info(
+                group.name, subgroup.name, subgroup.filename_tag, subgroup.custom_path,
+                group.include_in_path, scan_dt, override_filename or item_one_off_description, ext,
+            )
+            filename = dedupe_filename(filename, existing_names)
+            existing_names.add(filename)
+
+            await asyncio.to_thread(move_and_rename_file, file_id, filename, parent_id, source_folder)
+
+            async with AsyncSessionLocal() as db:
+                existing = await db.execute(select(Document).where(Document.drive_file_id == file_id))
+                doc = existing.scalar_one_or_none()
+                if doc is None:
+                    doc = Document(drive_file_id=file_id, file_name_when_imported=fname)
+                    db.add(doc)
+                doc.timestamp_from_filename = scan_dt
+                doc.group_id = group.id
+                doc.subgroup_id = subgroup.id
+                doc.desired_folder_location = folder_path
+                doc.desired_filename = filename
+                doc.desired_full_path = f"{folder_path}/{filename}"
+                doc.current_full_path = f"{folder_path}/{filename}"
+                doc.moved_and_renamed_timestamp = datetime.utcnow()
+                doc.assigned_item_one_off_description = item_one_off_description
+                doc.assigned_comment = comment
+                doc.assigned_rob_task = rob_task
+                doc.assigned_beccy_task = beccy_task
+                doc.assigned_task_note = task_note
+                doc.photo_quality = photo_quality
+                await db.commit()
+                doc_id = doc.id
+
+            await _fetch_and_cache_thumbnail(file_id)
+
+            if rob_task or beccy_task:
+                _title = task_note or item_one_off_description or filename or fname
+                _cat = f"{group.name} / {subgroup.name}" if subgroup.name != "/" else group.name
+                _date = scan_dt.strftime("%d %B %Y")
+                if rob_task:
+                    await _queue_2do_task(doc_id, _title, _cat, "rob", _date)
+                if beccy_task:
+                    await _queue_2do_task(doc_id, _title, _cat, "beccy", _date)
+        except Exception as e:
+            print(f"[bulk filing error] {file_id}: {e}")
+            continue
+
+    async with AsyncSessionLocal() as db:
+        sub = await db.get(Subgroup, subgroup_id)
+        if sub:
+            sub.use_count += 1
+            sub.last_used = datetime.utcnow()
+            await db.commit()
+
+
+@app.post("/import/bulk/file", response_class=HTMLResponse)
+async def import_bulk_file(
+    background_tasks: BackgroundTasks,
+    file_ids: list[str] = Form(...),
+    subgroup_id: int = Form(...),
+    override_filename: Optional[str] = Form(None),
+    item_one_off_description: Optional[str] = Form(None),
+    comment: Optional[str] = Form(None),
+    rob_task: Optional[str] = Form(None),
+    beccy_task: Optional[str] = Form(None),
+    task_note: Optional[str] = Form(None),
+    photo_quality: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    subgroup = await db.get(Subgroup, subgroup_id)
+    if not subgroup:
+        raise HTTPException(404)
+
+    background_tasks.add_task(
+        _do_bulk_filing,
+        file_ids,
+        subgroup_id,
+        override_filename.strip() if override_filename and override_filename.strip() else None,
+        item_one_off_description.strip() if item_one_off_description and item_one_off_description.strip() else None,
+        comment.strip() if comment and comment.strip() else None,
+        bool(rob_task),
+        bool(beccy_task),
+        task_note.strip() if task_note and task_note.strip() else None,
+        bool(photo_quality),
+    )
+    return RedirectResponse("/import", status_code=303)
+
+
 @app.get("/import/{drive_file_id}", response_class=HTMLResponse)
 async def import_detail_page(drive_file_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     service = get_drive_service()
