@@ -1510,14 +1510,27 @@ async def import_pick(
 
 async def _do_drive_filing(file_id: str, folder_path: str, filename: str, source_folder: str):
     """Move and rename a Drive file in the background after the HTTP response has been sent."""
-    from services.drive import get_or_create_folder, move_and_rename_file
+    from services.drive import get_or_create_folder, move_and_rename_file, list_files_in_folder
+    from services.filer import dedupe_filename
     def _sync():
         parent_id = settings.drive_filed_root_folder_id
         for part in [p for p in folder_path.strip("/").split("/") if p]:
             parent_id = get_or_create_folder(parent_id, part)
-        move_and_rename_file(file_id, filename, parent_id, source_folder)
+        existing_names = {f["name"] for f in list_files_in_folder(parent_id) if f["id"] != file_id}
+        final_filename = dedupe_filename(filename, existing_names)
+        move_and_rename_file(file_id, final_filename, parent_id, source_folder)
+        return final_filename
     try:
-        await asyncio.to_thread(_sync)
+        final_filename = await asyncio.to_thread(_sync)
+        if final_filename != filename:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(Document).where(Document.drive_file_id == file_id))
+                doc = result.scalar_one_or_none()
+                if doc:
+                    doc.desired_filename = final_filename
+                    doc.desired_full_path = f"{folder_path}/{final_filename}"
+                    doc.current_full_path = f"{folder_path}/{final_filename}"
+                    await db.commit()
     except Exception as e:
         print(f"[filing error] {file_id} → {folder_path}/{filename}: {e}")
 

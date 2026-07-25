@@ -1,7 +1,7 @@
 import re
 from datetime import datetime, date
 from typing import Optional
-from services.drive import get_or_create_folder, move_and_rename_file
+from services.drive import get_or_create_folder, move_and_rename_file, list_files_in_folder
 from config import settings
 
 
@@ -79,6 +79,26 @@ def build_filing_info(
     return folder, filename
 
 
+def dedupe_filename(filename: str, existing_names: set[str]) -> str:
+    """Disambiguate filename against a set of names already in the destination folder.
+
+    Appends " (2)" on first collision, " (3)" on the next, etc. If filename
+    already ends in " (N)", that suffix is replaced rather than stacked
+    another one on top — filing the same name a third time produces
+    "Foo (3).pdf", never "Foo (2) (2).pdf".
+    """
+    if filename not in existing_names:
+        return filename
+    stem, ext = filename.rsplit(".", 1) if "." in filename else (filename, "")
+    m = re.match(r'^(.*) \((\d+)\)$', stem)
+    base, n = (m.group(1), int(m.group(2)) + 1) if m else (stem, 2)
+    while True:
+        candidate = f"{base} ({n})." + ext if ext else f"{base} ({n})"
+        if candidate not in existing_names:
+            return candidate
+        n += 1
+
+
 def file_document(
     drive_file: dict,
     group_name: str,
@@ -106,6 +126,9 @@ def file_document(
     parent_id = settings.drive_filed_root_folder_id
     for part in [p for p in folder_path.strip("/").split("/") if p]:
         parent_id = get_or_create_folder(parent_id, part)
+
+    existing_names = {f["name"] for f in list_files_in_folder(parent_id) if f["id"] != drive_file["id"]}
+    filename = dedupe_filename(filename, existing_names)
 
     old_parent = source_folder_id or settings.drive_incoming_folder_id
     move_and_rename_file(drive_file["id"], filename, parent_id, old_parent)
