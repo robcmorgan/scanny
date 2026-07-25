@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% set active = 'import' %}
-{% block title %}Apply category — Scanny{% endblock %}
+{% block title %}Apply category — Phone{% endblock %}
 {% block content %}
 
 <a href="/import" class="flex items-center gap-1 text-sm text-gray-400 mb-4 active:opacity-60">
@@ -10,95 +10,18 @@
   Phone
 </a>
 
-<p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">
-  Apply to {{ file_ids|length }} file{% if file_ids|length != 1 %}s{% endif %}
-</p>
-
-<div class="flex gap-2 overflow-x-auto pb-2 mb-4">
-  {% for id in file_ids %}
-  <img src="/import/thumbnail/{{ id }}" class="w-16 h-20 object-cover rounded-lg bg-gray-100 shrink-0" onerror="this.style.display='none'">
-  {% endfor %}
+<div class="mb-3">
+  <p class="text-xs text-gray-400 mb-2">{{ file_ids|length }} file{% if file_ids|length != 1 %}s{% endif %} selected</p>
+  <div class="flex gap-2 overflow-x-auto pb-1">
+    {% for id in file_ids %}
+    <img src="/import/thumbnail/{{ id }}" class="w-16 h-20 object-cover rounded-xl bg-gray-100 shrink-0" onerror="this.style.display='none'">
+    {% endfor %}
+  </div>
 </div>
 
-<form id="bulk-confirm-form" method="post" action="/import/bulk/file" class="space-y-3">
-  {% for id in file_ids %}
-  <input type="hidden" name="file_ids" value="{{ id }}">
-  {% endfor %}
-
-  <div class="grid grid-cols-2 gap-2">
-    <select name="group_id" id="bulk-group-select"
-      hx-get="/import/bulk/subgroups" hx-target="#bulk-subgroup-wrap" hx-swap="innerHTML" hx-trigger="change"
-      required
-      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
-      <option value="" disabled selected>Group…</option>
-      {% for group in groups %}
-      <option value="{{ group.id }}">{{ group.name }}</option>
-      {% endfor %}
-    </select>
-    <div id="bulk-subgroup-wrap">
-      <select disabled
-        class="w-full bg-gray-100 text-gray-400 rounded-2xl px-4 py-3.5 text-sm shadow-sm">
-        <option>Pick a group first</option>
-      </select>
-    </div>
-  </div>
-
-  <input type="text" name="item_one_off_description" id="bulk-one-off"
-    oninput="bulkSyncOverride()"
-    class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-    placeholder="One-off description (optional, same for all)">
-
-  <input type="text" name="override_filename" id="bulk-override"
-    oninput="bulkOverrideManual = this.value.length > 0"
-    class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm font-mono shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-    placeholder="Filename override (optional, same for all — de-duped automatically)">
-
-  <textarea name="comment" rows="2"
-    class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-    placeholder="Notes (same for all)"></textarea>
-
-  <div class="bg-white rounded-2xl px-4 py-3.5 shadow-sm">
-    <div class="flex gap-6 flex-wrap">
-      <label class="flex items-center gap-2.5 cursor-pointer">
-        <input type="checkbox" name="rob_task" value="1" id="bulk-rob-todo" onchange="bulkToggleTodo()"
-          class="w-5 h-5 rounded accent-orange-500">
-        <span class="text-sm font-medium text-gray-700">Rob to-do</span>
-      </label>
-      <label class="flex items-center gap-2.5 cursor-pointer">
-        <input type="checkbox" name="beccy_task" value="1" id="bulk-beccy-todo" onchange="bulkToggleTodo()"
-          class="w-5 h-5 rounded accent-pink-500">
-        <span class="text-sm font-medium text-gray-700">Beccy to-do</span>
-      </label>
-      <label class="flex items-center gap-2.5 cursor-pointer">
-        <input type="checkbox" name="photo_quality" value="1"
-          class="w-5 h-5 rounded accent-sky-500">
-        <span class="text-sm font-medium text-gray-700">Photo</span>
-      </label>
-    </div>
-    <div id="bulk-todo-note" class="hidden mt-3">
-      <input type="text" name="task_note"
-        class="w-full bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-        placeholder="What needs doing? (same for all)">
-    </div>
-  </div>
-
-  <button type="submit"
-    class="w-full bg-blue-600 active:bg-blue-700 text-white py-3.5 rounded-2xl text-sm font-bold shadow-sm">
-    File {{ file_ids|length }} item{% if file_ids|length != 1 %}s{% endif %}
-  </button>
-</form>
-
-<script>
-window.bulkOverrideManual = false;
-function bulkSyncOverride() {
-  if (!window.bulkOverrideManual) {
-    document.getElementById('bulk-override').value = document.getElementById('bulk-one-off').value;
-  }
-}
-function bulkToggleTodo() {
-  var either = document.getElementById('bulk-rob-todo').checked || document.getElementById('bulk-beccy-todo').checked;
-  document.getElementById('bulk-todo-note').classList.toggle('hidden', !either);
-}
-</script>
+<!-- Picker (single element, always in DOM — HTMX targets here) -->
+<div id="picker-section">
+  {% include "_import_bulk_groups.html" %}
+</div>
 
 {% endblock %}

@@ -1227,27 +1227,125 @@ async def import_page(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
-@app.get("/import/bulk", response_class=HTMLResponse)
-async def import_bulk_page(request: Request, ids: str, db: AsyncSession = Depends(get_db)):
+def _parse_bulk_ids(ids: str) -> list[str]:
     file_ids = [i for i in ids.split(",") if i]
     if not file_ids:
         raise HTTPException(400, "No files selected")
+    return file_ids
+
+
+@app.get("/import/bulk", response_class=HTMLResponse)
+async def import_bulk_page(request: Request, ids: str, db: AsyncSession = Depends(get_db)):
+    file_ids = _parse_bulk_ids(ids)
     groups_result = await db.execute(select(Group).order_by(Group.name))
     return templates.TemplateResponse("import_bulk.html", {
         "request": request,
+        "ids": ids,
         "file_ids": file_ids,
         "groups": groups_result.scalars().all(),
     })
 
 
-@app.get("/import/bulk/subgroups", response_class=HTMLResponse)
-async def import_bulk_subgroups(request: Request, group_id: int, db: AsyncSession = Depends(get_db)):
-    subs_result = await db.execute(
-        select(Subgroup).where(Subgroup.group_id == group_id).order_by(Subgroup.name)
+@app.get("/import/bulk/groups", response_class=HTMLResponse)
+async def import_bulk_groups(
+    request: Request, ids: str,
+    group_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    _parse_bulk_ids(ids)
+    pairs_result = await db.execute(
+        select(Subgroup)
+        .options(joinedload(Subgroup.group))
+        .where((Subgroup.last_used.isnot(None)) | (Subgroup.use_count > 0))
+        .order_by(desc(Subgroup.last_used), desc(Subgroup.use_count))
+        .limit(4)
     )
-    return templates.TemplateResponse("_bulk_subgroup_select.html", {
+    quick_pairs = pairs_result.scalars().all()
+    if group_id:
+        group = await db.get(Group, group_id)
+        if not group:
+            raise HTTPException(404)
+        recent = await db.execute(
+            select(Subgroup)
+            .where(Subgroup.group_id == group_id, Subgroup.name != "/")
+            .order_by(desc(Subgroup.last_used), Subgroup.name)
+            .limit(5)
+        )
+        all_subs = await db.execute(
+            select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name != "/").order_by(Subgroup.name)
+        )
+        slash = await db.execute(
+            select(Subgroup).where(Subgroup.group_id == group_id, Subgroup.name == "/").limit(1)
+        )
+        return templates.TemplateResponse("_import_bulk_subgroups.html", {
+            "request": request,
+            "ids": ids,
+            "group": group,
+            "subgroups": recent.scalars().all(),
+            "all_subgroups": all_subs.scalars().all(),
+            "slash_sub": slash.scalar_one_or_none(),
+        })
+    groups_result = await db.execute(select(Group).order_by(Group.name))
+    return templates.TemplateResponse("_import_bulk_groups.html", {
         "request": request,
-        "subgroups": subs_result.scalars().all(),
+        "ids": ids,
+        "groups": groups_result.scalars().all(),
+        "quick_pairs": quick_pairs,
+    })
+
+
+@app.post("/import/bulk/create-subgroup", response_class=HTMLResponse)
+async def import_bulk_create_subgroup(
+    request: Request, ids: str,
+    group_id: int = Form(...),
+    name: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    file_ids = _parse_bulk_ids(ids)
+    new_sub = Subgroup(group_id=group_id, name=name.strip())
+    db.add(new_sub)
+    await db.flush()
+    await db.refresh(new_sub)
+    group = await db.get(Group, group_id)
+    new_sub.group = group
+    await db.commit()
+    subgroup_label = new_sub.name if new_sub.name != "/" else group.name
+    color_key = (group.name + "/" + new_sub.name) if new_sub.name != "/" else group.name
+    return templates.TemplateResponse("_import_bulk_confirm.html", {
+        "request": request,
+        "ids": ids,
+        "file_ids": file_ids,
+        "subgroup": new_sub,
+        "group": group,
+        "subgroup_label": subgroup_label,
+        "color_key": color_key,
+    })
+
+
+@app.get("/import/bulk/confirm", response_class=HTMLResponse)
+async def import_bulk_confirm(
+    request: Request, ids: str,
+    subgroup_id: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    file_ids = _parse_bulk_ids(ids)
+    sub_result = await db.execute(
+        select(Subgroup).options(joinedload(Subgroup.group)).where(Subgroup.id == subgroup_id)
+    )
+    subgroup = sub_result.scalar_one_or_none()
+    if not subgroup:
+        raise HTTPException(404)
+    group = subgroup.group
+    subgroup_label = subgroup.name if subgroup.name != "/" else group.name
+    color_key = (group.name + "/" + subgroup.name) if subgroup.name != "/" else group.name
+    return templates.TemplateResponse("_import_bulk_confirm.html", {
+        "request": request,
+        "ids": ids,
+        "file_ids": file_ids,
+        "subgroup": subgroup,
+        "group": group,
+        "subgroup_label": subgroup_label,
+        "color_key": color_key,
     })
 
 

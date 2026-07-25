@@ -1,0 +1,102 @@
+<div data-groups-area="">
+
+  <!-- NORMAL: header + recent subgroups -->
+  <div data-view="normal">
+    <div class="flex items-center gap-2 mb-4">
+      <button type="button"
+        hx-get="/import/bulk/groups?ids={{ ids }}"
+        hx-target="#picker-section"
+        hx-swap="innerHTML"
+        class="flex items-center gap-1 text-sm text-gray-400 active:opacity-60">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Groups
+      </button>
+      <p class="text-sm font-semibold text-gray-700 flex-1 truncate">{{ group.name }}</p>
+    </div>
+
+    {% if slash_sub %}
+    <button type="button"
+      hx-get="/import/bulk/confirm?ids={{ ids }}&subgroup_id={{ slash_sub.id }}"
+      hx-target="#picker-section"
+      hx-swap="innerHTML"
+      class="{{ chip_color(group.name) }} w-2/3 text-left font-medium ring-2 ring-inset ring-black/25 rounded-2xl px-4 py-2.5 active:scale-95 transition-transform block mb-3">
+      {{ group.name }}
+    </button>
+    {% endif %}
+
+    <div class="space-y-2">
+      {% for sub in subgroups %}
+      <button type="button"
+        hx-get="/import/bulk/confirm?ids={{ ids }}&subgroup_id={{ sub.id }}"
+        hx-target="#picker-section"
+        hx-swap="innerHTML"
+        class="{{ chip_color(group.name + '/' + sub.name) }} w-full text-left font-semibold rounded-2xl pl-6 pr-4 py-3.5 active:scale-95 transition-transform block"
+        style="{{ button_band_style(group.name, group.name + '/' + sub.name) }}">
+        {{ sub.name }}
+      </button>
+      {% endfor %}
+      {% if not subgroups and not slash_sub %}
+      <p class="text-sm text-gray-400 text-center py-4">No subgroups</p>
+      {% endif %}
+    </div>
+
+    <div class="flex justify-center mt-3"><div class="w-6 h-1 bg-gray-200 rounded-full"></div></div>
+  </div>
+
+  <!-- AZ: all subgroups scrollable -->
+  <div data-view="az" class="hidden">
+    <div class="flex items-center gap-2 mb-4">
+      <button onclick="toggleGroupsAZ(this)"
+        class="flex items-center gap-1 text-sm text-gray-400 active:opacity-60">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/>
+        </svg>
+        Recent
+      </button>
+      <p class="text-sm font-semibold text-gray-700 flex-1 truncate">{{ group.name }}</p>
+    </div>
+
+    <div class="overflow-y-auto max-h-[50vh] space-y-2">
+      {% if slash_sub %}
+      <button type="button"
+        hx-get="/import/bulk/confirm?ids={{ ids }}&subgroup_id={{ slash_sub.id }}"
+        hx-target="#picker-section"
+        hx-swap="innerHTML"
+        class="{{ chip_color(group.name) }} w-2/3 text-left font-medium ring-2 ring-inset ring-black/25 rounded-2xl px-4 py-2.5 active:scale-95 transition-transform block">
+        {{ group.name }}
+      </button>
+      {% endif %}
+      {% for sub in all_subgroups %}
+      <button type="button"
+        hx-get="/import/bulk/confirm?ids={{ ids }}&subgroup_id={{ sub.id }}"
+        hx-target="#picker-section"
+        hx-swap="innerHTML"
+        class="{{ chip_color(group.name + '/' + sub.name) }} w-full text-left font-semibold rounded-2xl pl-6 pr-4 py-3.5 active:scale-95 transition-transform block"
+        style="{{ button_band_style(group.name, group.name + '/' + sub.name) }}">
+        {{ sub.name }}
+      </button>
+      {% endfor %}
+      {% if not all_subgroups and not slash_sub %}
+      <p class="text-sm text-gray-400 text-center py-4">No subgroups</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<!-- New subgroup -->
+<form class="mt-3 pt-3 border-t border-gray-100"
+  hx-post="/import/bulk/create-subgroup?ids={{ ids }}"
+  hx-target="#picker-section"
+  hx-swap="innerHTML">
+  <input type="hidden" name="group_id" value="{{ group.id }}">
+  <div class="flex gap-2">
+    <input type="text" name="name" placeholder="New subgroup name" required
+      autocomplete="off"
+      class="flex-1 bg-gray-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+    <button type="submit"
+      class="bg-blue-600 text-white px-4 rounded-xl text-sm font-semibold active:bg-blue-700">Create</button>
+  </div>
+</form>

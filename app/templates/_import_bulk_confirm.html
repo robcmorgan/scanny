@@ -1,0 +1,167 @@
+<div class="flex items-center gap-2 mb-4">
+  <!-- X cancel → back to picker -->
+  <button type="button"
+    hx-get="/import/bulk/groups?ids={{ ids }}"
+    hx-target="#picker-section"
+    hx-swap="innerHTML"
+    class="w-11 h-11 flex items-center justify-center text-gray-400 active:opacity-60 shrink-0 -ml-1">
+    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+    </svg>
+  </button>
+  <!-- Subgroup chip -->
+  <div class="{{ chip_color(color_key) }} flex-1 rounded-2xl px-4 py-2.5 min-w-0">
+    <span class="text-xs opacity-60 block leading-tight">{{ group.name }}</span>
+    <span class="font-semibold leading-snug">{{ subgroup_label }} <span class="font-normal opacity-70">· {{ file_ids|length }} file{% if file_ids|length != 1 %}s{% endif %}</span></span>
+  </div>
+  <!-- Save submit -->
+  <button type="submit" form="bulk-confirm-form" id="bulk-submit-btn"
+    class="w-11 h-11 bg-blue-600 active:bg-blue-700 text-white rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M17 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V7l-4-4z"/>
+      <path stroke-linecap="round" stroke-linejoin="round" d="M17 3v4a1 1 0 01-1 1H8a1 1 0 01-1-1V3"/>
+      <rect x="9" y="14" width="6" height="5" rx="0.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+</div>
+
+<form id="bulk-confirm-form" action="/import/bulk/file" method="post">
+  <input type="hidden" name="subgroup_id" value="{{ subgroup.id }}">
+  {% for id in file_ids %}
+  <input type="hidden" name="file_ids" value="{{ id }}">
+  {% endfor %}
+
+  <p class="text-xs text-gray-400 mb-3 px-1">Same description/filename/notes are applied to all {{ file_ids|length }} files — filenames are de-duped automatically.</p>
+
+  <div class="space-y-3">
+
+    <input type="text" name="item_one_off_description" id="bulk-one-off"
+      oninput="bulkSyncOneOff()"
+      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+      placeholder="One-off description (optional, same for all)">
+
+    <textarea name="comment" rows="2"
+      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+      placeholder="Notes"></textarea>
+
+    <div class="bg-white rounded-2xl px-4 py-3.5 shadow-sm">
+      <div class="flex gap-6 flex-wrap">
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" name="rob_task" value="1" id="bulk-rob-todo" onchange="bulkToggleTodo()"
+            class="w-5 h-5 rounded accent-orange-500">
+          <span class="text-sm font-medium text-gray-700">Rob to-do</span>
+        </label>
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" name="beccy_task" value="1" id="bulk-beccy-todo" onchange="bulkToggleTodo()"
+            class="w-5 h-5 rounded accent-pink-500">
+          <span class="text-sm font-medium text-gray-700">Beccy to-do</span>
+        </label>
+        <label class="flex items-center gap-2.5 cursor-pointer">
+          <input type="checkbox" name="photo_quality" value="1"
+            class="w-5 h-5 rounded accent-sky-500">
+          <span class="flex items-center gap-1 text-sm font-medium text-gray-700">
+            <svg class="w-4 h-4 text-sky-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            Photo
+          </span>
+        </label>
+      </div>
+      <div id="bulk-todo-note" class="hidden mt-3">
+        <input type="text" name="task_note"
+          class="w-full bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+          placeholder="What needs doing?">
+      </div>
+    </div>
+
+    <input type="text" name="override_filename" id="bulk-override"
+      oninput="bulkOverrideManual=this.value.length>0"
+      class="w-full bg-white rounded-2xl px-4 py-3.5 text-sm font-mono shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+      placeholder="Filename override (optional, same for all)">
+
+  </div>
+</form>
+
+<script>
+(function() {
+  var ids = {{ ids | tojson }};
+  window.bulkOverrideManual = false;
+
+  // Preserve typed notes/override/tasks across group/subgroup navigation (X cancel + re-pick),
+  // same reasoning as the single-file confirm screen: each pick re-renders this partial from scratch.
+  var storageKey = 'scanny-bulk-draft:' + ids;
+  var draftTextFields = ['item_one_off_description', 'comment', 'override_filename', 'task_note'];
+  var draftCheckboxes = ['rob_task', 'beccy_task', 'photo_quality'];
+  var form = document.getElementById('bulk-confirm-form');
+
+  function saveDraft() {
+    var data = {};
+    draftTextFields.forEach(function(name) {
+      var el = form.querySelector('[name="' + name + '"]');
+      if (el) data[name] = el.value;
+    });
+    draftCheckboxes.forEach(function(name) {
+      var el = form.querySelector('[name="' + name + '"]');
+      if (el) data[name] = el.checked;
+    });
+    sessionStorage.setItem(storageKey, JSON.stringify(data));
+  }
+
+  function restoreDraft() {
+    var raw = sessionStorage.getItem(storageKey);
+    if (!raw) return;
+    var data;
+    try { data = JSON.parse(raw); } catch (e) { return; }
+    draftTextFields.forEach(function(name) {
+      if (data[name] === undefined) return;
+      var el = form.querySelector('[name="' + name + '"]');
+      if (el) el.value = data[name];
+    });
+    draftCheckboxes.forEach(function(name) {
+      if (data[name] === undefined) return;
+      var el = form.querySelector('[name="' + name + '"]');
+      if (el) el.checked = data[name];
+    });
+    if (data.override_filename) window.bulkOverrideManual = true;
+  }
+
+  restoreDraft();
+  form.addEventListener('input', saveDraft);
+  form.addEventListener('change', saveDraft);
+  form.addEventListener('submit', function() {
+    sessionStorage.removeItem(storageKey);
+  });
+
+  window.bulkSyncOneOff = function() {
+    if (!window.bulkOverrideManual) {
+      document.getElementById('bulk-override').value = document.getElementById('bulk-one-off').value;
+    }
+  };
+
+  window.bulkToggleTodo = function() {
+    var either = document.getElementById('bulk-rob-todo').checked || document.getElementById('bulk-beccy-todo').checked;
+    document.getElementById('bulk-todo-note').classList.toggle('hidden', !either);
+  };
+
+  bulkToggleTodo();
+
+  // Focus the save button so Enter submits immediately
+  var submitBtn = document.getElementById('bulk-submit-btn');
+  var oneOff = document.getElementById('bulk-one-off');
+  setTimeout(function() { if (submitBtn) submitBtn.focus(); }, 50);
+
+  // Typing any printable character redirects focus to the description field
+  document.addEventListener('keydown', function onBulkConfirmKey(e) {
+    if (!document.getElementById('bulk-submit-btn')) {
+      document.removeEventListener('keydown', onBulkConfirmKey);
+      return;
+    }
+    var active = document.activeElement;
+    var inInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+    if (!inInput && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      oneOff.focus();
+    }
+  });
+})();
+</script>
