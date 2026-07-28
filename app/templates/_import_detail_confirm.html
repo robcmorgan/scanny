@@ -118,7 +118,8 @@
   var scanDate      = {{ scan_date_str | tojson }};
   var scanTime      = {{ scan_time_str | tojson }};
   var fileId        = {{ file_id | tojson }};
-  var ext = driveFilename.split('.').pop() || 'pdf';
+  var extMatch = driveFilename.match(/\.([^.]+)$/);
+  var ext = extMatch ? extMatch[1] : 'pdf';
   window.importOverrideManual = false;
 
   // Preserve typed notes/override/tasks across group/subgroup navigation (X cancel + re-pick),
