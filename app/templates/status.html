@@ -21,6 +21,31 @@
   {% endif %}
 </div>
 
+<div class="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+  <h2 class="font-semibold text-gray-700 mb-3">Toodledo</h2>
+  {% if toodledo_authed %}
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-2 text-green-700 font-medium">
+      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+      </svg>
+      Connected
+    </div>
+    <button
+      hx-post="/toodledo/test-task"
+      hx-target="#toodledo-test-result"
+      hx-swap="innerHTML"
+      class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium active:opacity-70">Send test task</button>
+  </div>
+  <pre id="toodledo-test-result" class="mt-2 text-xs text-gray-500 whitespace-pre-wrap break-all"></pre>
+  {% else %}
+  <div class="flex items-center justify-between">
+    <span class="text-red-600 font-medium">Not connected</span>
+    <a href="/toodledo/auth" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">Connect Toodledo</a>
+  </div>
+  {% endif %}
+</div>
+
 <div class="bg-white border border-gray-200 rounded-xl p-4">
   <h2 class="font-semibold text-gray-700 mb-3">Configuration</h2>
   <dl class="space-y-2 text-sm">

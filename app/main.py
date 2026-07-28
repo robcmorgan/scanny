@@ -18,6 +18,7 @@ from models import Group, Subgroup, PendingScan, Document
 from config import settings
 from services.drive import get_flow, save_credentials_from_flow, get_credentials, get_drive_service
 from services.watcher import start_scheduler, stop_scheduler
+import services.toodledo as toodledo
 
 
 THUMB_CACHE = Path(__file__).parent.parent / "data" / "thumbnails"
@@ -141,46 +142,7 @@ def _chip_color(key: str) -> str:
         h = (h * 31 + ord(c)) & 0x7FFFFFFF
     return _CHIP_PALETTE[h % len(_CHIP_PALETTE)]
 
-_TW_HEX = {
-    "blue":    {100:"#dbeafe",200:"#bfdbfe",300:"#93c5fd",400:"#60a5fa"},
-    "orange":  {100:"#ffedd5",200:"#fed7aa",300:"#fdba74",400:"#fb923c"},
-    "green":   {100:"#dcfce7",200:"#bbf7d0",300:"#86efac",400:"#4ade80"},
-    "fuchsia": {100:"#fdf4ff",200:"#fae8ff",300:"#f0abfc",400:"#e879f9"},
-    "amber":   {100:"#fef3c7",200:"#fde68a",300:"#fcd34d",400:"#fbbf24"},
-    "sky":     {100:"#e0f2fe",200:"#bae6fd",300:"#7dd3fc",400:"#38bdf8"},
-    "red":     {100:"#fee2e2",200:"#fecaca",300:"#fca5a5",400:"#f87171"},
-    "lime":    {100:"#f7fee7",200:"#d9f99d",300:"#bef264",400:"#a3e635"},
-    "violet":  {100:"#ede9fe",200:"#ddd6fe",300:"#c4b5fd",400:"#a78bfa"},
-    "yellow":  {100:"#fef9c3",200:"#fef08a",300:"#fde047",400:"#facc15"},
-    "teal":    {100:"#ccfbf1",200:"#99f6e4",300:"#5eead4",400:"#2dd4bf"},
-    "pink":    {100:"#fce7f3",200:"#fbcfe8",300:"#f9a8d4",400:"#f472b6"},
-    "rose":    {100:"#ffe4e6",200:"#fecdd3",300:"#fda4af",400:"#fb7185"},
-    "emerald": {100:"#d1fae5",200:"#a7f3d0",300:"#6ee7b7",400:"#34d399"},
-    "cyan":    {100:"#cffafe",200:"#a5f3fc",300:"#67e8f9",400:"#22d3ee"},
-    "indigo":  {100:"#e0e7ff",200:"#c7d2fe",300:"#a5b4fc",400:"#818cf8"},
-    "purple":  {100:"#f3e8ff",200:"#e9d5ff",300:"#d8b4fe",400:"#c084fc"},
-}
-
-def _chip_color_hex(key: str) -> str:
-    bg = _chip_color(key).split()[0]          # "bg-violet-300"
-    parts = bg.split("-")
-    hue = "-".join(parts[1:-1])               # "violet"
-    shade = int(parts[-1])                    # 300
-    return _TW_HEX.get(hue, {}).get(shade, "#e5e7eb")
-
-def _button_band_style(group_key: str, sub_key: str) -> str:
-    band = _chip_color_hex(group_key)
-    bg   = _chip_color_hex(sub_key)
-    return (
-        f"background:linear-gradient(to right,"
-        f"{band} 1rem,"
-        f"rgba(0,0,0,0.2) 1rem,rgba(0,0,0,0.2) calc(1rem + 2px),"
-        f"{bg} calc(1rem + 2px))"
-    )
-
 templates.env.globals["chip_color"] = _chip_color
-templates.env.globals["chip_color_hex"] = _chip_color_hex
-templates.env.globals["button_band_style"] = _button_band_style
 
 
 def _is_default_name(doc, subgroup=None) -> bool:
@@ -223,6 +185,35 @@ async def drive_callback(code: str):
     flow = get_flow()
     save_credentials_from_flow(flow, code)
     return RedirectResponse("/")
+
+
+# ---------------------------------------------------------------------------
+# Toodledo OAuth
+# ---------------------------------------------------------------------------
+
+@app.get("/toodledo/auth")
+async def toodledo_auth():
+    return RedirectResponse(toodledo.get_authorize_url(state="scanny"))
+
+
+@app.get("/toodledo/callback")
+async def toodledo_callback(code: str):
+    await asyncio.to_thread(toodledo.exchange_code, code)
+    return RedirectResponse("/status")
+
+
+@app.post("/toodledo/test-task", response_class=HTMLResponse)
+async def toodledo_test_task():
+    import json as _json
+    try:
+        result = await asyncio.to_thread(
+            toodledo.create_task,
+            "Scanny test task",
+            f"Test task from Scanny.\n{settings.app_base_url}/",
+        )
+        return _json.dumps(result, indent=2)
+    except Exception as e:
+        return f"Error: {e}"
 
 
 # ---------------------------------------------------------------------------
@@ -1976,34 +1967,16 @@ async def document_delete_from_drive(document_id: int, db: AsyncSession = Depend
 # ---------------------------------------------------------------------------
 
 async def _queue_2do_task(doc_id: int, title: str, category: str, assignee: str, scan_date: str = ""):
-    """Write a task JSON file to the Drive tasks folder for the Mac sync agent to pick up."""
-    if not settings.drive_tasks_folder_id:
+    """Create a Toodledo task for the given assignee, synced into 2Do."""
+    if not toodledo.is_connected():
         return
-    import json as _json
-    from googleapiclient.http import MediaInMemoryUpload
-
-    list_name = "go with Rob incoming" if assignee == "rob" else "Beccy incoming"
+    folder_name = "go with Rob incoming" if assignee == "rob" else "Beccy incoming"
     note_lines = [l for l in [category, f"{settings.app_base_url}/document/{doc_id}", f"Scanned {scan_date}" if scan_date else ""] if l]
-    task = {"title": title, "note": "\n".join(note_lines), "list": list_name, "doc_id": doc_id}
-    filename = f"scanny_{assignee}_{doc_id}.json"
-    content = _json.dumps(task, indent=2).encode()
-
-    def _upload():
-        svc = get_drive_service()
-        existing = svc.files().list(
-            q=f"name='{filename}' and '{settings.drive_tasks_folder_id}' in parents and trashed=false",
-            fields="files(id)",
-        ).execute().get("files", [])
-        for f in existing:
-            svc.files().delete(fileId=f["id"]).execute()
-        svc.files().create(
-            body={"name": filename, "parents": [settings.drive_tasks_folder_id]},
-            media_body=MediaInMemoryUpload(content, mimetype="application/json"),
-            fields="id",
-        ).execute()
+    note = "\n".join(note_lines)
 
     try:
-        await asyncio.to_thread(_upload)
+        folder_id = await asyncio.to_thread(toodledo.get_or_create_folder, folder_name)
+        await asyncio.to_thread(toodledo.create_task, title, note, folder_id)
     except Exception as e:
         print(f"[2Do queue] doc={doc_id} assignee={assignee}: {e}")
 
@@ -2558,5 +2531,6 @@ async def status(request: Request):
     return templates.TemplateResponse("status.html", {
         "request": request,
         "drive_authed": get_credentials() is not None,
+        "toodledo_authed": toodledo.is_connected(),
         "settings": settings,
     })

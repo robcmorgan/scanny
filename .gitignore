@@ -1,6 +1,7 @@
 # Secrets and credentials — never commit
 secrets/
 data/token.json
+data/toodledo_token.json
 
 # Database
 *.db

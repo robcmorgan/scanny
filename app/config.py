@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     poll_interval_seconds: int = 30
     app_base_url: str = "http://localhost:9841"
     drive_import_folder_id: str = ""
-    drive_tasks_folder_id: str = ""   # Drive folder ID for 2Do task queue files
+    toodledo_client_id: str = ""
+    toodledo_client_secret: str = ""
+    toodledo_token_file: str = "../data/toodledo_token.json"
 
     class Config:
         env_file = "../.env"

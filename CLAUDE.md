@@ -21,6 +21,7 @@ app/
     drive.py       — Google Drive API helpers
     filer.py       — filename parsing + Drive move/rename logic
     watcher.py     — APScheduler background poll job
+    toodledo.py    — Toodledo OAuth2 + task creation (2Do sync)
   templates/       — Jinja2 HTML (HTMX partials prefixed with _)
 secrets/           — put client_secret.json here (git-ignored)
 ```
@@ -59,6 +60,8 @@ docker compose up --build
 | `DRIVE_FILED_ROOT_FOLDER_ID` | Root folder ID for the organised archive |
 | `APP_BASE_URL` | Public URL of this app (used for OAuth callback) |
 | `POLL_INTERVAL_SECONDS` | How often to check Drive (default 30) |
+| `TOODLEDO_CLIENT_ID` | Toodledo API app client ID (2Do task sync) |
+| `TOODLEDO_CLIENT_SECRET` | Toodledo API app client secret |
 
 ## Setup checklist
 
@@ -68,3 +71,5 @@ docker compose up --build
 4. Set `.env` with folder IDs and base URL
 5. `docker compose up --build`
 6. Visit `/status` → Connect Google Drive
+7. Register an app at Toodledo (sign in → API docs → register application) with redirect URI `{APP_BASE_URL}/toodledo/callback`; put the client ID/secret in `.env`
+8. Visit `/status` → Connect Toodledo → "Send test task" to verify, then check 2Do (2Do's own sync account must be set to Toodledo)
