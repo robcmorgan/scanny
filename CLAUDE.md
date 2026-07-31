@@ -54,8 +54,6 @@ pip install -r requirements.txt
 DATABASE_URL=sqlite+aiosqlite:///./scratch.db uvicorn main:app --reload --port 9842
 ```
 
-`docker-compose.yml` in the repo root is unused/aspirational — don't assume Docker is involved when debugging deploy issues.
-
 ## Environment variables
 
 | Variable | Description |
@@ -73,7 +71,7 @@ DATABASE_URL=sqlite+aiosqlite:///./scratch.db uvicorn main:app --reload --port 9
 2. Add `{APP_BASE_URL}/drive/callback` as an authorised redirect URI
 3. Download `client_secret.json` → place in `secrets/`
 4. Set `.env` with folder IDs and base URL
-5. `docker compose up --build`
+5. `sudo systemctl restart scanny`
 6. Visit `/status` → Connect Google Drive
 7. Register an app at Toodledo (sign in → API docs → register application) with redirect URI `{APP_BASE_URL}/toodledo/callback`; put the client ID/secret in `.env`
 8. Visit `/status` → Connect Toodledo → "Send test task" to verify, then check 2Do (2Do's own sync account must be set to Toodledo)
