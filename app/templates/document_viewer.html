@@ -38,13 +38,21 @@
   </div>
 
   {% if doc.drive_file_id %}
-  <a href="https://drive.google.com/file/d/{{ doc.drive_file_id }}/view" target="_blank"
-     class="flex items-center gap-1 text-xs text-gray-400 shrink-0 active:opacity-60">
-    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-    </svg>
+  <div class="flex items-center gap-1.5 text-xs text-gray-400 shrink-0">
     Drive
-  </a>
+    <a href="https://drive.google.com/file/d/{{ doc.drive_file_id }}/view" target="_blank" class="active:opacity-60" title="Open file in Drive">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+    </a>
+    {% if parent_folder_id %}
+    <a href="https://drive.google.com/drive/folders/{{ parent_folder_id }}" target="_blank" class="active:opacity-60" title="Open containing folder in Drive">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h3.586a1 1 0 01.707.293l1.414 1.414a1 1 0 00.707.293H19a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+      </svg>
+    </a>
+    {% endif %}
+  </div>
   {% endif %}
 </div>
 
@@ -81,49 +89,27 @@
 </div>
 {% endif %}
 
-{% if doc.drive_file_id %}
+<div class="sm:flex sm:gap-6 sm:items-start">
 
-<!-- Mobile: full-width thumbnail with scroll -->
-<div class="sm:hidden mb-3">
+{% if doc.drive_file_id %}
+<div class="mb-3 sm:mb-0 sm:flex-1 sm:sticky sm:top-4">
   <a href="/document/{{ doc.id }}/file"
      class="block rounded-2xl overflow-hidden bg-gray-100 shadow-sm active:opacity-70"
-     style="max-height: 50vh; overflow-y: auto;">
-    <img src="/thumbnail/{{ doc.id }}?v={{ doc.drive_file_id[-4:] }}"
-         class="w-full"
+     style="max-height: min(820px, calc(100vh - 140px)); overflow-y: auto;">
+    <img src="/document/{{ doc.id }}/preview-image?v={{ doc.drive_file_id[-4:] }}"
+         class="w-full block"
          onerror="this.style.display='none'">
   </a>
   <p class="text-xs text-gray-400 text-center mt-2">
     <a href="/document/{{ doc.id }}/file" target="_blank" class="text-blue-500">Open PDF ↗</a>
   </p>
 </div>
-
 {% else %}
-<div class="sm:hidden text-center py-8 text-gray-400 mb-3">
-  <svg class="w-10 h-10 mx-auto mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+<div class="text-center py-8 sm:flex-1 sm:py-20 text-gray-400 mb-3 sm:mb-0">
+  <svg class="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
   </svg>
   <p class="text-sm">No file linked yet.</p>
-</div>
-{% endif %}
-
-<div class="sm:flex sm:gap-6 sm:items-start">
-
-{% if doc.drive_file_id %}
-<!-- Desktop: inline iframe fills left column -->
-<div class="hidden sm:block sm:flex-1 sticky top-4">
-  <div class="bg-gray-100 rounded-2xl overflow-hidden w-full shadow-sm"
-       style="height: min(820px, calc(100vh - 140px));">
-    <iframe src="/document/{{ doc.id }}/file" class="w-full h-full border-0"></iframe>
-  </div>
-  <p class="text-xs text-gray-400 text-center mt-2">
-    <a href="/document/{{ doc.id }}/file" target="_blank" class="text-blue-500">Open in new tab ↗</a>
-  </p>
-</div>
-{% else %}
-<div class="hidden sm:flex sm:flex-1 items-center justify-center text-gray-300 py-20">
-  <svg class="w-12 h-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-  </svg>
 </div>
 {% endif %}
 

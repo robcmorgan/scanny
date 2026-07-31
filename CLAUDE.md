@@ -4,10 +4,10 @@ Web app replacing a FileMaker document-scanning workflow. Users tag a category b
 
 ## Stack
 
-- **Backend**: FastAPI (Python 3.12), async SQLAlchemy, PostgreSQL 16
+- **Backend**: FastAPI (Python 3.12), async SQLAlchemy, SQLite (`app/scanny.db`)
 - **Frontend**: HTMX + Tailwind CSS (CDN), Jinja2 templates — no build step
 - **Drive**: Google OAuth (user's own account), polling via APScheduler every 30s
-- **Deploy**: Docker Compose, separate Portainer stack, port 9841
+- **Deploy**: systemd service `scanny.service` on this host, running bare `uvicorn main:app` (no `--reload`) on port 9841. `docker-compose.yml` exists in the repo but is unused — the app was never actually moved into Docker. **Code changes to `.py` files require `sudo systemctl restart scanny` to take effect; only Jinja templates are picked up live.**
 
 ## Structure
 
@@ -36,21 +36,25 @@ With override filename: `/{Group}/{Subgroup}/{override stem}.ext`
 
 `String from tag` is stored as `Subgroup.filename_tag`. Fallback when NULL: group name (for "/" subgroup) or subgroup name.
 
-## Running locally (outside Docker)
+## Running / restarting
+
+The live app runs as the `scanny` systemd service (`/etc/systemd/system/scanny.service`), `WorkingDirectory=/home/robmorgan/scanny/app`, `ExecStart=/home/robmorgan/.local/bin/uvicorn main:app --host 0.0.0.0 --port 9841`. It uses the `.env` in the repo root and the default SQLite DB path (no `DATABASE_URL` override).
+
+```bash
+sudo systemctl restart scanny   # required after any .py change
+sudo systemctl status scanny
+journalctl -u scanny -f          # tail logs
+```
+
+For ad-hoc local dev against a scratch DB instead of the live one:
 
 ```bash
 cd app
 pip install -r requirements.txt
-DATABASE_URL=postgresql+asyncpg://... uvicorn main:app --reload
+DATABASE_URL=sqlite+aiosqlite:///./scratch.db uvicorn main:app --reload --port 9842
 ```
 
-## Docker
-
-```bash
-cp .env.example .env   # fill in folder IDs + APP_BASE_URL
-mkdir -p data
-docker compose up --build
-```
+`docker-compose.yml` in the repo root is unused/aspirational — don't assume Docker is involved when debugging deploy issues.
 
 ## Environment variables
 

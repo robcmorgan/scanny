@@ -11,6 +11,7 @@ from config import settings
 AUTH_URL = "https://api.toodledo.com/3/account/authorize.php"
 TOKEN_URL = "https://api.toodledo.com/3/account/token.php"
 TASKS_ADD_URL = "https://api.toodledo.com/3/tasks/add.php"
+TASKS_GET_URL = "https://api.toodledo.com/3/tasks/get.php"
 FOLDERS_GET_URL = "https://api.toodledo.com/3/folders/get.php"
 FOLDERS_ADD_URL = "https://api.toodledo.com/3/folders/add.php"
 SCOPE = "basic tasks write"
@@ -144,3 +145,26 @@ def create_task(title: str, note: str = "", folder_id: Optional[int] = None) -> 
     if isinstance(result, dict) and "errorDesc" in result:
         raise ValueError(f"Toodledo error: {result['errorDesc']}")
     return result
+
+
+def get_completed_tasks(after_ts: int) -> list[dict]:
+    """Return tasks completed/modified after the given unix timestamp.
+
+    The response's first element is a {"num":N,"total":N} count header, not
+    a task — strip it before returning.
+    """
+    access_token = get_access_token()
+    if not access_token:
+        raise ValueError("Not authenticated with Toodledo")
+    resp = httpx.get(
+        TASKS_GET_URL,
+        params={"access_token": access_token, "comp": 1, "after": after_ts},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    result = resp.json()
+    if isinstance(result, dict) and "errorDesc" in result:
+        raise ValueError(f"Toodledo error: {result['errorDesc']}")
+    if isinstance(result, list) and result and "total" in result[0]:
+        return result[1:]
+    return result if isinstance(result, list) else []

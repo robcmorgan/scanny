@@ -76,6 +76,8 @@ class Document(Base):
     assigned_rob_task: Mapped[bool] = mapped_column(Boolean, default=False)
     assigned_beccy_task: Mapped[bool] = mapped_column(Boolean, default=False)
     assigned_task_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    toodledo_rob_task_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    toodledo_beccy_task_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     assigned_date_override: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # Filing paths

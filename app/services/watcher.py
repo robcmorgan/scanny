@@ -1,12 +1,15 @@
+import asyncio
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.orm import joinedload
 from database import AsyncSessionLocal
 from models import PendingScan, Document, Subgroup, Group
 from services.drive import list_files_in_folder, get_credentials
 from services.filer import parse_date_from_filename, file_document
+import services.toodledo as toodledo
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -138,8 +141,49 @@ async def poll_drive():
                     logger.debug(f"No pending scan yet for {drive_file['name']} — will retry")
 
 
+TOODLEDO_LOOKBACK_SECONDS = 6 * 3600  # tolerate downtime between polls without needing a persisted cursor
+
+
+async def poll_toodledo_completions():
+    if not toodledo.is_connected():
+        return
+
+    try:
+        after_ts = int(time.time()) - TOODLEDO_LOOKBACK_SECONDS
+        completed = await asyncio.to_thread(toodledo.get_completed_tasks, after_ts)
+    except Exception as e:
+        logger.error(f"Toodledo completion poll error: {e}")
+        return
+    if not completed:
+        return
+
+    completed_ids = {t["id"] for t in completed}
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Document).where(
+                or_(
+                    Document.toodledo_rob_task_id.in_(completed_ids),
+                    Document.toodledo_beccy_task_id.in_(completed_ids),
+                )
+            )
+        )
+        docs = result.scalars().all()
+        for doc in docs:
+            if doc.toodledo_rob_task_id in completed_ids:
+                doc.assigned_rob_task = False
+                doc.toodledo_rob_task_id = None
+            if doc.toodledo_beccy_task_id in completed_ids:
+                doc.assigned_beccy_task = False
+                doc.toodledo_beccy_task_id = None
+        if docs:
+            await db.commit()
+            logger.info(f"Cleared {len(docs)} to-do(s) completed in 2Do")
+
+
 def start_scheduler():
     scheduler.add_job(poll_drive, "interval", seconds=settings.poll_interval_seconds, id="drive_poll")
+    scheduler.add_job(poll_toodledo_completions, "interval", seconds=settings.poll_interval_seconds, id="toodledo_poll")
     scheduler.start()
 
 

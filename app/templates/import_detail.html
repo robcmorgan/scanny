@@ -25,6 +25,19 @@
     <p class="text-xs text-gray-400 shrink-0">{{ file.createdTime[:10] }}</p>
     <a href="/import/{{ file.id }}/view" target="_blank"
        class="text-xs text-blue-500 font-medium shrink-0 active:opacity-60">Open ↗</a>
+    <div class="flex items-center gap-1.5 text-xs text-gray-400 shrink-0">
+      Drive
+      <a href="https://drive.google.com/file/d/{{ file.id }}/view" target="_blank" class="active:opacity-60" title="Open file in Drive">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+      </a>
+      <a href="https://drive.google.com/drive/folders/{{ parent_folder_id }}" target="_blank" class="active:opacity-60" title="Open containing folder in Drive">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h3.586a1 1 0 01.707.293l1.414 1.414a1 1 0 00.707.293H19a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+        </svg>
+      </a>
+    </div>
     <form action="/import/{{ file.id }}/delete-from-drive" method="post"
           onsubmit="return confirm('Move this file to Drive trash?')" class="shrink-0">
       <button type="submit" class="text-xs text-red-400 font-medium active:opacity-60">Delete</button>
@@ -55,6 +68,19 @@
       <div class="flex items-center justify-between">
         <a href="/import/{{ file.id }}/view" target="_blank"
            class="text-xs text-blue-500 font-medium">Open in new tab ↗</a>
+        <div class="flex items-center gap-1.5 text-xs text-gray-400">
+          Drive
+          <a href="https://drive.google.com/file/d/{{ file.id }}/view" target="_blank" class="active:opacity-60" title="Open file in Drive">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+          </a>
+          <a href="https://drive.google.com/drive/folders/{{ parent_folder_id }}" target="_blank" class="active:opacity-60" title="Open containing folder in Drive">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h3.586a1 1 0 01.707.293l1.414 1.414a1 1 0 00.707.293H19a2 2 0 012 2v7a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+            </svg>
+          </a>
+        </div>
         <form action="/import/{{ file.id }}/delete-from-drive" method="post"
               onsubmit="return confirm('Move this file to Drive trash?')">
           <button type="submit" class="text-xs text-red-400 font-medium active:opacity-60">Delete</button>

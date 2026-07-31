@@ -987,9 +987,20 @@ async def document_viewer(document_id: int, request: Request, db: AsyncSession =
     from services.filer import extract_drive_prefix as _pfx
     filename_prefix = _pfx(doc.file_name_when_imported or "") if not doc.assigned_item_one_off_description else ""
     scan_date_str = doc.timestamp_from_filename.strftime("%Y-%m-%d") if doc.timestamp_from_filename else ""
+    parent_folder_id = None
+    if doc.drive_file_id:
+        try:
+            service = get_drive_service()
+            meta = await asyncio.to_thread(
+                lambda: service.files().get(fileId=doc.drive_file_id, fields="parents").execute()
+            )
+            parent_folder_id = (meta.get("parents") or [None])[0]
+        except Exception:
+            parent_folder_id = None
     return templates.TemplateResponse("document_viewer.html", {
         "request": request,
         "doc": doc,
+        "parent_folder_id": parent_folder_id,
         "all_groups": all_groups,
         "quick_pairs": quick_pairs,
         "filename_prefix": filename_prefix,
@@ -1064,12 +1075,44 @@ async def update_document(
         raise HTTPException(404)
     prev_rob = doc.assigned_rob_task
     prev_beccy = doc.assigned_beccy_task
-    doc.assigned_item_one_off_description = item_one_off_description.strip() or None
+    prev_description = doc.assigned_item_one_off_description
+    new_description = item_one_off_description.strip() or None
+    doc.assigned_item_one_off_description = new_description
     doc.assigned_comment = comment.strip() or None
     doc.assigned_rob_task = rob_task == "1"
     doc.assigned_beccy_task = beccy_task == "1"
     doc.assigned_task_note = task_note.strip() or None
     doc.photo_quality = bool(photo_quality)
+
+    # Renaming the description renames the actual file in Drive to match,
+    # same convention as recategorizing — falls back to the default
+    # "{date} {tag} scanned papers-{time}.ext" name when cleared.
+    if new_description != prev_description and doc.drive_file_id and doc.group and doc.subgroup:
+        from services.filer import build_filing_info
+        current_name = doc.desired_filename or doc.file_name_when_imported or ""
+        ext = current_name.rsplit(".", 1)[-1].lower() if "." in current_name else "pdf"
+        scan_dt = doc.timestamp_from_filename or datetime.utcnow()
+        folder_path, new_filename = build_filing_info(
+            group_name=doc.group.name,
+            subgroup_name=doc.subgroup.name,
+            filename_tag=doc.subgroup.filename_tag,
+            custom_path=doc.subgroup.custom_path,
+            include_group_in_path=doc.group.include_in_path,
+            scan_datetime=scan_dt,
+            override_filename=new_description,
+            ext=ext,
+        )
+        service = get_drive_service()
+        await asyncio.to_thread(
+            lambda: service.files().update(
+                fileId=doc.drive_file_id, body={"name": new_filename}, fields="id,name"
+            ).execute()
+        )
+        doc.desired_folder_location = folder_path
+        doc.desired_filename = new_filename
+        doc.desired_full_path = f"{folder_path}/{new_filename}"
+        doc.current_full_path = f"{folder_path}/{new_filename}"
+
     await db.commit()
     # Queue 2Do tasks for newly-checked boxes only
     title = doc.assigned_task_note or doc.assigned_item_one_off_description or doc.desired_filename or doc.file_name_when_imported or "Scanny document"
@@ -1285,6 +1328,28 @@ async def import_bulk_groups(
     })
 
 
+@app.post("/import/bulk/create-group", response_class=HTMLResponse)
+async def import_bulk_create_group(
+    request: Request, ids: str,
+    name: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    _parse_bulk_ids(ids)
+    group = Group(name=name.strip(), include_in_path=True)
+    db.add(group)
+    await db.flush()
+    await db.refresh(group)
+    await db.commit()
+    return templates.TemplateResponse("_import_bulk_subgroups.html", {
+        "request": request,
+        "ids": ids,
+        "group": group,
+        "subgroups": [],
+        "all_subgroups": [],
+        "slash_sub": None,
+    })
+
+
 @app.post("/import/bulk/create-subgroup", response_class=HTMLResponse)
 async def import_bulk_create_subgroup(
     request: Request, ids: str,
@@ -1483,8 +1548,9 @@ async def import_bulk_file(
 async def import_detail_page(drive_file_id: str, request: Request, db: AsyncSession = Depends(get_db)):
     service = get_drive_service()
     file = await asyncio.to_thread(
-        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime,mimeType").execute()
+        lambda: service.files().get(fileId=drive_file_id, fields="id,name,createdTime,mimeType,parents").execute()
     )
+    parent_folder_id = (file.get("parents") or [settings.drive_incoming_folder_id])[0]
     groups_result = await db.execute(select(Group).order_by(Group.name))
     pairs_result = await db.execute(
         select(Subgroup)
@@ -1497,6 +1563,7 @@ async def import_detail_page(drive_file_id: str, request: Request, db: AsyncSess
         "request": request,
         "file": file,
         "file_id": drive_file_id,
+        "parent_folder_id": parent_folder_id,
         "groups": groups_result.scalars().all(),
         "quick_pairs": pairs_result.scalars().all(),
     })
@@ -1546,6 +1613,27 @@ async def import_detail_groups(
         "file_id": drive_file_id,
         "groups": groups_result.scalars().all(),
         "quick_pairs": quick_pairs,
+    })
+
+
+@app.post("/import/{drive_file_id}/create-group", response_class=HTMLResponse)
+async def import_create_group(
+    drive_file_id: str, request: Request,
+    name: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    group = Group(name=name.strip(), include_in_path=True)
+    db.add(group)
+    await db.flush()
+    await db.refresh(group)
+    await db.commit()
+    return templates.TemplateResponse("_import_detail_subgroups.html", {
+        "request": request,
+        "file_id": drive_file_id,
+        "group": group,
+        "subgroups": [],
+        "all_subgroups": [],
+        "slash_sub": None,
     })
 
 
@@ -1674,6 +1762,23 @@ async def import_preview_image(drive_file_id: str, max_pages: int = 4):
         content, content_type = await _fetch_drive_media(drive_file_id)
         if "pdf" not in content_type.lower():
             # Not a PDF (e.g. a plain photo scan) — nothing to paginate, pass it through as-is.
+            return Response(content, media_type=content_type, headers={"Cache-Control": "no-store"})
+        image = await asyncio.to_thread(_render_pdf_preview, content, max_pages)
+        return Response(image, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/document/{document_id}/preview-image")
+async def document_preview_image(document_id: int, max_pages: int = 20, db: AsyncSession = Depends(get_db)):
+    doc = await db.get(Document, document_id)
+    if not doc or not doc.drive_file_id:
+        raise HTTPException(404)
+    try:
+        content, content_type = await _fetch_drive_media(doc.drive_file_id)
+        if "pdf" not in content_type.lower():
             return Response(content, media_type=content_type, headers={"Cache-Control": "no-store"})
         image = await asyncio.to_thread(_render_pdf_preview, content, max_pages)
         return Response(image, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
@@ -1971,12 +2076,29 @@ async def _queue_2do_task(doc_id: int, title: str, category: str, assignee: str,
     if not toodledo.is_connected():
         return
     folder_name = "go with Rob incoming" if assignee == "rob" else "Beccy incoming"
-    note_lines = [l for l in [category, f"{settings.app_base_url}/document/{doc_id}", f"Scanned {scan_date}" if scan_date else ""] if l]
-    note = "\n".join(note_lines)
 
     try:
-        folder_id = await asyncio.to_thread(toodledo.get_or_create_folder, folder_name)
-        await asyncio.to_thread(toodledo.create_task, title, note, folder_id)
+        async with AsyncSessionLocal() as db:
+            doc = await db.get(Document, doc_id)
+            if not doc:
+                return
+            note_lines = [
+                category,
+                f"{settings.app_base_url}/document/{doc_id}",
+                f"https://drive.google.com/file/d/{doc.drive_file_id}/view" if doc.drive_file_id else "",
+                f"Scanned {scan_date}" if scan_date else "",
+            ]
+            note = "\n".join(l for l in note_lines if l)
+
+            folder_id = await asyncio.to_thread(toodledo.get_or_create_folder, folder_name)
+            result = await asyncio.to_thread(toodledo.create_task, title, note, folder_id)
+            task_id = result[0]["id"]
+
+            if assignee == "rob":
+                doc.toodledo_rob_task_id = task_id
+            else:
+                doc.toodledo_beccy_task_id = task_id
+            await db.commit()
     except Exception as e:
         print(f"[2Do queue] doc={doc_id} assignee={assignee}: {e}")
 
