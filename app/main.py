@@ -846,11 +846,19 @@ async def library(request: Request, db: AsyncSession = Depends(get_db)):
         select(func.count(Document.id)).where(Document.broken_link == True)
     )
     broken_count = broken_count_result.scalar() or 0
+    recent_result = await db.execute(
+        select(Subgroup)
+        .options(joinedload(Subgroup.group))
+        .where((Subgroup.last_used.isnot(None)) | (Subgroup.use_count > 0))
+        .order_by(desc(Subgroup.last_used), desc(Subgroup.use_count))
+        .limit(30)
+    )
     return templates.TemplateResponse("library.html", {
         "request": request,
         "active": "library",
         "groups": groups,
         "broken_count": broken_count,
+        "recent_subgroups": recent_result.scalars().all(),
     })
 
 
