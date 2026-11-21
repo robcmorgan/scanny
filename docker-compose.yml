@@ -1,8 +1,7 @@
-version: '3.8'
-
 services:
   app:
     build: ./app
+    image: scanny:latest
     container_name: scanny
     restart: unless-stopped
     environment:
@@ -10,13 +9,11 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:////data/scanny.db
     env_file:
       - .env
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "9841:8000"
     volumes:
       - ./secrets:/secrets:ro
       - ./data:/data
-      - ./app:/app
     networks:
       - media-stack_otis_net
 
