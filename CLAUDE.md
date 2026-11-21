@@ -7,7 +7,7 @@ Web app replacing a FileMaker document-scanning workflow. Users tag a category b
 - **Backend**: FastAPI (Python 3.12), async SQLAlchemy, SQLite (`app/scanny.db`)
 - **Frontend**: HTMX + Tailwind CSS (CDN), Jinja2 templates — no build step
 - **Drive**: Google OAuth (user's own account), polling via APScheduler every 30s
-- **Deploy**: systemd service `scanny.service` on this host, running bare `uvicorn main:app` (no `--reload`) on port 9841. `docker-compose.yml` exists in the repo but is unused — the app was never actually moved into Docker. **Code changes to `.py` files require `sudo systemctl restart scanny` to take effect; only Jinja templates are picked up live.**
+- **Deploy**: Docker container `scanny` on **otis** (moved from rains 2026-11-21), compose project in `otis:~/scanny`, on the `media-stack_otis_net` network, host port 9841 → container 8000. Public URL `scanny.rob.me.uk` via the remotely-managed `cloudflared` tunnel on otis (route `http://scanny:8000`, behind Cloudflare Access). **This repo on rains is the dev copy — nothing changes in prod until `./deploy.sh` (code + templates are baked into the image; no live reload).**
 
 ## Structure
 
@@ -36,21 +36,22 @@ With override filename: `/{Group}/{Subgroup}/{override stem}.ext`
 
 `String from tag` is stored as `Subgroup.filename_tag`. Fallback when NULL: group name (for "/" subgroup) or subgroup name.
 
-## Running / restarting
+## Running / deploying
 
-The live app runs as the `scanny` systemd service (`/etc/systemd/system/scanny.service`), `WorkingDirectory=/home/robmorgan/scanny/app`, `ExecStart=/home/robmorgan/.local/bin/uvicorn main:app --host 0.0.0.0 --port 9841`. It uses the `.env` in the repo root and the default SQLite DB path (no `DATABASE_URL` override).
+Prod lives on otis. `.env`, `secrets/` and `data/` (SQLite DB `data/scanny.db`, Google/Toodledo tokens, thumbnail cache) exist only in `otis:~/scanny` and are mounted into the container — `deploy.sh` never touches them.
 
 ```bash
-sudo systemctl restart scanny   # required after any .py change
-sudo systemctl status scanny
-journalctl -u scanny -f          # tail logs
+./deploy.sh                                   # ship working tree to otis, rebuild + restart container
+ssh otis 'docker logs -f scanny'              # tail logs
+ssh otis 'cd ~/scanny && docker compose restart'
 ```
 
-For ad-hoc local dev against a scratch DB instead of the live one:
+The old `scanny.service` systemd unit on rains is stopped and disabled (kept only as a rollback). Never run both at once — two pollers would race to file the same Drive files.
+
+For ad-hoc local dev on rains against a scratch DB:
 
 ```bash
 cd app
-pip install -r requirements.txt
 DATABASE_URL=sqlite+aiosqlite:///./scratch.db uvicorn main:app --reload --port 9842
 ```
 
@@ -71,7 +72,7 @@ DATABASE_URL=sqlite+aiosqlite:///./scratch.db uvicorn main:app --reload --port 9
 2. Add `{APP_BASE_URL}/drive/callback` as an authorised redirect URI
 3. Download `client_secret.json` → place in `secrets/`
 4. Set `.env` with folder IDs and base URL
-5. `sudo systemctl restart scanny`
+5. `./deploy.sh`
 6. Visit `/status` → Connect Google Drive
 7. Register an app at Toodledo (sign in → API docs → register application) with redirect URI `{APP_BASE_URL}/toodledo/callback`; put the client ID/secret in `.env`
 8. Visit `/status` → Connect Toodledo → "Send test task" to verify, then check 2Do (2Do's own sync account must be set to Toodledo)
