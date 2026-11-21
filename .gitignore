@@ -24,3 +24,5 @@ filemaker-import/
 
 # Logs
 *.log
+*.db.bak*
+data/thumbnails/

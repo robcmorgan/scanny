@@ -12,3 +12,4 @@ pydantic-settings==2.6.1
 httpx==0.28.1
 pymupdf==1.25.5
 pillow==11.0.0
+pillow-heif==0.21.0

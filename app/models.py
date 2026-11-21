@@ -46,11 +46,31 @@ class PendingScan(Base):
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     date_override: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     override_filename: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, filed, error
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, filed, error, closed
     photo_quality: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     subgroup: Mapped[Optional["Subgroup"]] = relationship("Subgroup", back_populates="pending_scans")
     document: Mapped[Optional["Document"]] = relationship("Document", back_populates="pending_scan", uselist=False)
+    files: Mapped[list["PendingScanFile"]] = relationship(
+        "PendingScanFile", back_populates="pending_scan",
+        order_by="PendingScanFile.drive_created_time", cascade="all, delete-orphan",
+    )
+
+
+class PendingScanFile(Base):
+    """A Drive file matched to an open PendingScan session, buffered until the session is finalized."""
+    __tablename__ = "pending_scan_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pending_scan_id: Mapped[int] = mapped_column(Integer, ForeignKey("pending_scans.id"), nullable=False)
+    drive_file_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(500))
+    mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    drive_created_time: Mapped[datetime] = mapped_column(DateTime)
+    matched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    pending_scan: Mapped["PendingScan"] = relationship("PendingScan", back_populates="files")
 
 
 class Document(Base):

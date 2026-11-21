@@ -6,9 +6,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select, or_
 from sqlalchemy.orm import joinedload
 from database import AsyncSessionLocal
-from models import PendingScan, Document, Subgroup, Group
+from models import PendingScan, PendingScanFile, Document, Subgroup, Group
 from services.drive import list_files_in_folder, get_credentials
-from services.filer import parse_date_from_filename, file_document
+from services.filer import parse_date_from_filename, finalize_pending_scan
 import services.toodledo as toodledo
 from config import settings
 
@@ -34,16 +34,40 @@ async def poll_drive():
     if not get_credentials() or not settings.drive_incoming_folder_id:
         return
 
-    try:
-        files = list_files_in_folder(settings.drive_incoming_folder_id)
-    except Exception as e:
-        logger.error(f"Drive list error: {e}")
-        return
-
-    if not files:
-        return
-
     async with AsyncSessionLocal() as db:
+        # Phase 0 — idle-timeout sweep. Finalize any open session that's gone quiet
+        # *before* matching this cycle's files, so a file arriving in the same cycle a
+        # session times out can never be wrongly attached to it.
+        stale = await db.execute(
+            select(PendingScan.id)
+            .where(PendingScan.status == "pending")
+            .where(PendingScan.last_activity_at < datetime.utcnow() - MATCH_WINDOW)
+        )
+        for pending_id in stale.scalars().all():
+            await finalize_pending_scan(db, pending_id)
+
+        try:
+            files = list_files_in_folder(settings.drive_incoming_folder_id)
+        except Exception as e:
+            logger.error(f"Drive list error: {e}")
+            return
+
+        if not files:
+            return
+
+        # Phase 1 — the single currently-open session, if any. Only one PendingScan can be
+        # status=="pending" at a time (creating or finishing a session always closes the
+        # rest), so matching is just "is there an open session, and is this file within its
+        # idle window" rather than picking the best of several candidates.
+        open_pending = (await db.execute(
+            select(PendingScan)
+            .options(joinedload(PendingScan.subgroup).joinedload(Subgroup.group))
+            .where(PendingScan.status == "pending")
+            .order_by(PendingScan.created_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+
+        # Phase 2 — buffer each new matching file against the open session.
         for drive_file in files:
             # Skip non-document file types
             if drive_file.get("mimeType") not in ACCEPTED_MIMETYPES:
@@ -54,78 +78,38 @@ async def poll_drive():
             if file_created_utc < _service_start:
                 continue
 
-            existing = await db.execute(select(Document).where(Document.drive_file_id == drive_file["id"]))
-            if existing.scalar_one_or_none():
+            existing_doc = await db.execute(select(Document).where(Document.drive_file_id == drive_file["id"]))
+            if existing_doc.scalar_one_or_none():
+                continue
+
+            existing_buffered = await db.execute(
+                select(PendingScanFile.id).where(PendingScanFile.drive_file_id == drive_file["id"])
+            )
+            if existing_buffered.scalar_one_or_none():
                 continue
 
             file_created = file_created_utc.replace(tzinfo=None)
 
-            result = await db.execute(
-                select(PendingScan)
-                .options(joinedload(PendingScan.subgroup).joinedload(Subgroup.group))
-                .where(PendingScan.status == "pending")
-                .where(PendingScan.created_at <= file_created)
-                .where(PendingScan.created_at >= file_created - MATCH_WINDOW)
-                .order_by(PendingScan.created_at.desc())
-                .limit(1)
-            )
-            pending = result.scalar_one_or_none()
-
-            if pending and pending.subgroup:
-                subgroup = pending.subgroup
-                group = subgroup.group
-                try:
-                    scan_dt = parse_date_from_filename(drive_file["name"]) or file_created
-                    folder_path, filename, _ = file_document(
-                        drive_file=drive_file,
-                        group_name=group.name,
-                        subgroup_name=subgroup.name,
-                        filename_tag=subgroup.filename_tag,
-                        custom_path=subgroup.custom_path,
-                        include_group_in_path=group.include_in_path,
-                        date_override=pending.date_override,
-                        override_filename=pending.override_filename,
-                    )
-
-                    doc = Document(
-                        drive_file_id=drive_file["id"],
-                        file_name_when_imported=drive_file["name"],
-                        timestamp_from_filename=scan_dt,
-                        group_id=group.id,
-                        subgroup_id=subgroup.id,
-                        pending_scan_id=pending.id,
-                        assigned_item_one_off_description=pending.item_one_off_description,
-                        assigned_comment=pending.comment,
-                        assigned_rob_task=pending.rob_task,
-                        assigned_beccy_task=pending.beccy_task,
-                        assigned_task_note=pending.task_note,
-                        assigned_date_override=pending.date_override,
-                        photo_quality=pending.photo_quality,
-                        desired_folder_location=folder_path,
-                        desired_filename=filename,
-                        desired_full_path=f"{folder_path}/{filename}",
-                        current_full_path=f"{folder_path}/{filename}",
-                        moved_and_renamed_timestamp=datetime.utcnow(),
-                    )
-                    db.add(doc)
-                    pending.status = "filed"
-                    subgroup.use_count += 1
-                    subgroup.last_used = datetime.utcnow()
-                    await db.commit()
-                    logger.info(f"Filed {drive_file['name']} → {folder_path}/{filename}")
-                    try:
-                        from main import _fetch_and_cache_thumbnail
-                        await _fetch_and_cache_thumbnail(drive_file["id"])
-                    except Exception:
-                        pass
-                except Exception as e:
-                    logger.error(f"Failed to file {drive_file['name']}: {e}")
-                    pending.status = "error"
-                    await db.commit()
+            if (
+                open_pending and open_pending.subgroup
+                and file_created >= open_pending.created_at
+                and (file_created - open_pending.last_activity_at) <= MATCH_WINDOW
+            ):
+                db.add(PendingScanFile(
+                    pending_scan_id=open_pending.id,
+                    drive_file_id=drive_file["id"],
+                    original_filename=drive_file["name"],
+                    mime_type=drive_file.get("mimeType"),
+                    drive_created_time=file_created,
+                ))
+                open_pending.last_activity_at = file_created
+                await db.commit()
+                logger.info(f"Buffered {drive_file['name']} into scan session {open_pending.id}")
             else:
-                # No matching pending scan within window.
-                # If file is recent (still within window), skip — a pending scan may arrive soon.
-                # Once the window has passed with no match, queue it for manual filing.
+                # No open session to attach to (or none with a subgroup).
+                # If the file is still recent, a session may open/resume shortly — retry
+                # next poll. Once its own age passes the window with nothing to attach to,
+                # queue it for manual filing (Import/Phone picker), same as before.
                 age = datetime.utcnow() - file_created
                 if age > MATCH_WINDOW:
                     scan_dt = parse_date_from_filename(drive_file["name"]) or file_created
@@ -138,7 +122,7 @@ async def poll_drive():
                     await db.commit()
                     logger.info(f"No match within window for {drive_file['name']} — queued for manual filing")
                 else:
-                    logger.debug(f"No pending scan yet for {drive_file['name']} — will retry")
+                    logger.debug(f"No open scan session yet for {drive_file['name']} — will retry")
 
 
 TOODLEDO_LOOKBACK_SECONDS = 6 * 3600  # tolerate downtime between polls without needing a persisted cursor

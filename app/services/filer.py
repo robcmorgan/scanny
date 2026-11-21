@@ -1,8 +1,26 @@
+import asyncio
+import io
+import logging
 import re
 from datetime import datetime, date
 from typing import Optional
-from services.drive import get_or_create_folder, move_and_rename_file, list_files_in_folder
+
+import fitz
+import pillow_heif
+from PIL import Image, ImageOps
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, selectinload
+
+from services.drive import (
+    get_or_create_folder, move_and_rename_file, list_files_in_folder,
+    download_file_bytes, upload_file_bytes, trash_or_move_to_can_delete,
+)
 from config import settings
+
+pillow_heif.register_heif_opener()  # lets PIL.Image.open() decode HEIC alongside JPEG/PNG/TIFF
+
+logger = logging.getLogger(__name__)
 
 
 _DATE_PATTERNS = [
@@ -133,3 +151,139 @@ def file_document(
     old_parent = source_folder_id or settings.drive_incoming_folder_id
     move_and_rename_file(drive_file["id"], filename, parent_id, old_parent)
     return folder_path, filename, parent_id
+
+
+def _merge_to_pdf(files: list[tuple[bytes, str, str]]) -> bytes:
+    """Merge ordered (content, mime_type, filename) tuples into one PDF's bytes.
+
+    Existing PDF pages are copied in as-is; images (JPEG/PNG/TIFF/HEIC) each become
+    one page, sized to the image's own DPI so the page doesn't come out stretched.
+    """
+    out = fitz.open()
+    for data, mime, name in files:
+        if mime == "application/pdf" or name.lower().endswith(".pdf"):
+            out.insert_pdf(fitz.open(stream=data, filetype="pdf"))
+        else:
+            img = Image.open(io.BytesIO(data))
+            img = ImageOps.exif_transpose(img).convert("RGB")  # fitz doesn't apply EXIF rotation itself
+            dpi = img.info.get("dpi") or (200, 200)
+            dpi_x = dpi[0] or 200
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=90)
+            w_pt, h_pt = img.width / dpi_x * 72, img.height / dpi_x * 72
+            page = out.new_page(width=w_pt, height=h_pt)
+            page.insert_image(page.rect, stream=buf.getvalue())
+    merged = out.tobytes()
+    out.close()
+    return merged
+
+
+async def finalize_pending_scan(db: AsyncSession, pending_id: int) -> None:
+    """Close out an open scan session: merge every buffered file into one PDF and file it
+    as a single Document. Called from the watcher's idle sweep, the "Finish scanning"
+    route, and when a new PendingScan is created (which auto-closes any other open one).
+
+    Safe to call more than once for the same session — a session already resolved
+    (not status=="pending") is a no-op, guarding against a race between two triggers.
+    """
+    from models import PendingScan, Subgroup, Document  # local import avoids a circular import at module load
+
+    result = await db.execute(
+        select(PendingScan)
+        .options(joinedload(PendingScan.subgroup).joinedload(Subgroup.group), selectinload(PendingScan.files))
+        .where(PendingScan.id == pending_id)
+    )
+    pending = result.unique().scalar_one_or_none()
+    if not pending or pending.status != "pending":
+        return
+
+    files = pending.files
+    if not files:
+        pending.status = "closed"
+        await db.commit()
+        return
+
+    if not pending.subgroup:
+        # Shouldn't happen (the confirm form requires a subgroup before a PendingScan can be
+        # created) but guard rather than silently discarding buffered files.
+        pending.status = "error"
+        await db.commit()
+        logger.error(f"PendingScan {pending_id} finalized with no subgroup — files left buffered")
+        return
+
+    subgroup = pending.subgroup
+    group = subgroup.group
+
+    try:
+        downloaded = []
+        for f in files:
+            content, content_type = await download_file_bytes(f.drive_file_id)
+            downloaded.append((content, f.mime_type or content_type, f.original_filename))
+
+        merged_bytes = await asyncio.to_thread(_merge_to_pdf, downloaded)
+
+        # Keep the first file's stem (scanner-generated names embed the scan date/time,
+        # which parse_date_from_filename()/file_document() rely on) but force a .pdf extension.
+        first_stem = files[0].original_filename.rsplit(".", 1)[0]
+        merged_name = f"{first_stem}.pdf"
+
+        uploaded = await asyncio.to_thread(
+            upload_file_bytes, merged_name, merged_bytes, "application/pdf", settings.drive_incoming_folder_id
+        )
+
+        scan_dt = parse_date_from_filename(merged_name) or files[0].drive_created_time
+        folder_path, filename, _ = file_document(
+            drive_file=uploaded,
+            group_name=group.name,
+            subgroup_name=subgroup.name,
+            filename_tag=subgroup.filename_tag,
+            custom_path=subgroup.custom_path,
+            include_group_in_path=group.include_in_path,
+            date_override=pending.date_override,
+            override_filename=pending.override_filename,
+        )
+
+        # Only clean up originals after the merged PDF is safely filed — if anything above
+        # raised, every source file is still sitting untouched in the incoming folder.
+        for f in files:
+            await trash_or_move_to_can_delete(f.drive_file_id)
+
+        doc = Document(
+            drive_file_id=uploaded["id"],
+            file_name_when_imported=merged_name,
+            timestamp_from_filename=scan_dt,
+            group_id=group.id,
+            subgroup_id=subgroup.id,
+            pending_scan_id=pending.id,
+            assigned_item_one_off_description=pending.item_one_off_description,
+            assigned_comment=pending.comment,
+            assigned_rob_task=pending.rob_task,
+            assigned_beccy_task=pending.beccy_task,
+            assigned_task_note=pending.task_note,
+            assigned_date_override=pending.date_override,
+            photo_quality=pending.photo_quality,
+            desired_folder_location=folder_path,
+            desired_filename=filename,
+            desired_full_path=f"{folder_path}/{filename}",
+            current_full_path=f"{folder_path}/{filename}",
+            moved_and_renamed_timestamp=datetime.utcnow(),
+        )
+        db.add(doc)
+        pending.status = "filed"
+        subgroup.use_count += 1
+        subgroup.last_used = datetime.utcnow()
+        for f in files:
+            await db.delete(f)
+        await db.commit()
+        logger.info(f"Filed merged scan session {pending_id} ({len(files)} page(s)) → {folder_path}/{filename}")
+
+        try:
+            from main import _fetch_and_cache_thumbnail
+            await _fetch_and_cache_thumbnail(uploaded["id"])
+        except Exception:
+            pass
+
+    except Exception as e:
+        logger.error(f"Failed to finalize pending scan {pending_id}: {e}")
+        pending.status = "error"
+        await db.commit()

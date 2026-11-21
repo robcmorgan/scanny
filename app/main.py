@@ -11,12 +11,15 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse,
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_, and_, func
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from database import get_db, init_db, AsyncSessionLocal
 from models import Group, Subgroup, PendingScan, Document
 from config import settings
-from services.drive import get_flow, save_credentials_from_flow, get_credentials, get_drive_service
+from services.drive import (
+    get_flow, save_credentials_from_flow, get_credentials, get_drive_service,
+    download_file_bytes as _fetch_drive_media, trash_or_move_to_can_delete as _trash_or_move_to_can_delete,
+)
 from services.watcher import start_scheduler, stop_scheduler
 import services.toodledo as toodledo
 
@@ -553,8 +556,19 @@ async def delete_pending(pending_id: int, db: AsyncSession = Depends(get_db)):
     return HTMLResponse("")
 
 
+async def _finalize_pending_scan_task(pending_id: int):
+    """Finalize a scan session in the background, after the HTTP response has been sent."""
+    from services.filer import finalize_pending_scan
+    try:
+        async with AsyncSessionLocal() as db:
+            await finalize_pending_scan(db, pending_id)
+    except Exception as e:
+        print(f"[finalize scan session error] {pending_id}: {e}")
+
+
 @app.post("/pending")
 async def create_pending(
+    background_tasks: BackgroundTasks,
     subgroup_id: int = Form(...),
     item_one_off_description: Optional[str] = Form(None),
     rob_task: Optional[str] = Form(None),
@@ -597,7 +611,58 @@ async def create_pending(
         sub.last_used = datetime.utcnow()
 
     await db.commit()
-    return RedirectResponse("/", status_code=303)
+
+    # Starting a new scan session always closes out any other still-open one, whether or
+    # not it ever received a file.
+    other_open = await db.execute(
+        select(PendingScan.id).where(PendingScan.status == "pending", PendingScan.id != pending.id)
+    )
+    for other_id in other_open.scalars().all():
+        background_tasks.add_task(_finalize_pending_scan_task, other_id)
+
+    return RedirectResponse(f"/pending/{pending.id}/scanning", status_code=303)
+
+
+async def _load_pending_scan(pending_id: int, db: AsyncSession) -> Optional[PendingScan]:
+    result = await db.execute(
+        select(PendingScan)
+        .options(
+            joinedload(PendingScan.subgroup).joinedload(Subgroup.group),
+            joinedload(PendingScan.document),
+            selectinload(PendingScan.files),
+        )
+        .where(PendingScan.id == pending_id)
+    )
+    return result.unique().scalar_one_or_none()
+
+
+@app.get("/pending/{pending_id}/scanning", response_class=HTMLResponse)
+async def pending_scanning(pending_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    scan = await _load_pending_scan(pending_id, db)
+    if not scan:
+        raise HTTPException(404)
+    return templates.TemplateResponse("pending_scanning.html", {"request": request, "scan": scan})
+
+
+@app.get("/pending/{pending_id}/scanning-status", response_class=HTMLResponse)
+async def pending_scanning_status(pending_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    # No 404 here even if the row is gone (e.g. cancelled from the Queue sheet in another
+    # tab) — the fragment renders a terminal "no longer available" state instead, so a
+    # client that's mid-poll always reaches a stable end state rather than an error.
+    scan = await _load_pending_scan(pending_id, db)
+    return templates.TemplateResponse("_pending_scanning.html", {"request": request, "scan": scan})
+
+
+@app.post("/pending/{pending_id}/finish", response_class=HTMLResponse)
+async def finish_pending_scan(pending_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    from services.filer import finalize_pending_scan
+    scan = await _load_pending_scan(pending_id, db)
+    if not scan:
+        raise HTTPException(404)
+    if scan.status == "pending":
+        await finalize_pending_scan(db, pending_id)
+        scan = await _load_pending_scan(pending_id, db)
+    return templates.TemplateResponse("_pending_scanning.html", {"request": request, "scan": scan})
 
 
 # ---------------------------------------------------------------------------
@@ -1753,17 +1818,6 @@ def _render_pdf_preview(data: bytes, max_pages: int, dpi: int = 110) -> bytes:
     return buf.getvalue()
 
 
-async def _fetch_drive_media(drive_file_id: str) -> tuple[bytes, str]:
-    import httpx
-    creds = get_credentials()
-    url = f"https://www.googleapis.com/drive/v3/files/{drive_file_id}?alt=media"
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, headers={"Authorization": f"Bearer {creds.token}"}, follow_redirects=True)
-    if resp.status_code == 404:
-        raise HTTPException(404)
-    return resp.content, resp.headers.get("content-type", "application/pdf")
-
-
 @app.get("/import/{drive_file_id}/preview-image")
 async def import_preview_image(drive_file_id: str, max_pages: int = 4):
     try:
@@ -2007,40 +2061,9 @@ async def import_file(
     )
 
 
-async def _trash_or_move_to_can_delete(service, drive_file_id: str):
-    """Trash a Drive file. If not owner (403), move it to a root-level 'can delete' folder instead."""
-    from googleapiclient.errors import HttpError as _HttpError
-    from services.drive import get_or_create_folder
-    try:
-        await asyncio.to_thread(lambda: service.files().update(fileId=drive_file_id, body={"trashed": True}).execute())
-    except _HttpError as e:
-        if e.resp.status == 404:
-            return  # already gone
-        if e.resp.status == 403:
-            # Not owner — move to 'can delete' at My Drive root instead
-            file_meta = await asyncio.to_thread(
-                lambda: service.files().get(fileId=drive_file_id, fields="parents").execute()
-            )
-            root_id = (await asyncio.to_thread(
-                lambda: service.files().get(fileId="root", fields="id").execute()
-            ))["id"]
-            can_delete_id = await asyncio.to_thread(get_or_create_folder, root_id, "can delete")
-            old_parents = ",".join(file_meta.get("parents", []))
-            await asyncio.to_thread(lambda: service.files().update(
-                fileId=drive_file_id,
-                addParents=can_delete_id,
-                removeParents=old_parents,
-                body={},
-                fields="id",
-            ).execute())
-        else:
-            raise HTTPException(502, f"Drive error: {e}")
-
-
 @app.post("/import/{drive_file_id}/delete-from-drive")
 async def import_delete_from_drive(drive_file_id: str, db: AsyncSession = Depends(get_db)):
-    service = get_drive_service()
-    await _trash_or_move_to_can_delete(service, drive_file_id)
+    await _trash_or_move_to_can_delete(drive_file_id)
     queued = (await db.execute(
         select(Document).where(Document.drive_file_id == drive_file_id, Document.group_id.is_(None))
     )).scalar_one_or_none()
@@ -2068,8 +2091,7 @@ async def document_delete_from_drive(document_id: int, db: AsyncSession = Depend
         raise HTTPException(404)
     back_url = f"/library/{doc.group_id}/{doc.subgroup_id}" if doc.subgroup_id else f"/library/{doc.group_id}" if doc.group_id else "/library"
     if doc.drive_file_id:
-        service = get_drive_service()
-        await _trash_or_move_to_can_delete(service, doc.drive_file_id)
+        await _trash_or_move_to_can_delete(doc.drive_file_id)
     await db.delete(doc)
     await db.commit()
     return RedirectResponse(back_url, status_code=303)
