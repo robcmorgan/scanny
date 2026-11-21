@@ -4,7 +4,7 @@ Web app replacing a FileMaker document-scanning workflow. Users tag a category b
 
 ## Stack
 
-- **Backend**: FastAPI (Python 3.12), async SQLAlchemy, SQLite (`app/scanny.db`)
+- **Backend**: FastAPI (Python 3.12), async SQLAlchemy, SQLite (`data/scanny.db` on otis)
 - **Frontend**: HTMX + Tailwind CSS (CDN), Jinja2 templates — no build step
 - **Drive**: Google OAuth (user's own account), polling via APScheduler every 30s
 - **Deploy**: Docker container `scanny` on **otis** (moved from rains 2026-11-21), compose project in `otis:~/scanny`, on the `media-stack_otis_net` network, host port 9841 → container 8000. Public URL `scanny.rob.me.uk` via the remotely-managed `cloudflared` tunnel on otis (route `http://scanny:8000`, behind Cloudflare Access). **This repo on rains is the dev copy — nothing changes in prod until `./deploy.sh` (code + templates are baked into the image; no live reload).**
